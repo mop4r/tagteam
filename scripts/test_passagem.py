@@ -72,21 +72,26 @@ class TestScriptDeVerdade(unittest.TestCase):
     """Roda os hooks como o Claude e o Antigravity rodam (python -I, processo novo): pega import que so
     funciona no teste, onde a pasta ja esta no caminho."""
 
-    def rodar(self, script, entrada, temp):
+    def rodar(self, script, entrada, temp, extra_env=None):
         import subprocess
         import sys
         env = dict(os.environ, TEMP=temp, TMP=temp)
+        if extra_env:
+            env.update(extra_env)
         r = subprocess.run([sys.executable, "-I", os.path.join(os.path.dirname(os.path.abspath(__file__)), script)],
                            input=json.dumps(entrada).encode(), capture_output=True, env=env, timeout=60)
         return r.stdout.decode("utf-8")
 
     def test_gancho_do_claude_pede_a_passagem(self):
+        import shutil
         temp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, temp)
+        os.makedirs(os.path.join(temp, ".gemini", "antigravity-cli", "conversations"))
         pasta = os.path.join(temp, "tagteam")
         with mock.patch.object(gancho, "PASTA", pasta):
             passagem.gravar_uso_claude({"rate_limits": {"five_hour": {"used_percentage": 97}}}, __import__("time").time())
         saida = self.rodar("gancho.py", {"hook_event_name": "Stop", "session_id": "6e940537-9f5e-4579-aa79-c76070a1c08a"},
-                           temp)
+                           temp, extra_env={"USERPROFILE": temp, "HOME": temp})
         self.assertEqual(json.loads(saida)["decision"], "block")
 
     def test_gancho_do_antigravity_responde_json(self):
