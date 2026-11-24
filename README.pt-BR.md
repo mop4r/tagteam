@@ -2,8 +2,10 @@
   <img src="assets/banner.svg" alt="TagTeam — uma conversa, três IAs: Claude Code, Gemini (Antigravity) e Grok CLI" width="100%">
 </p>
 
+<h1 align="center">TagTeam — Sincronize conversas entre Claude Code, Gemini (Antigravity) e Grok CLI</h1>
+
 <p align="center">
-  <a href="README.md">English</a> · <b>Português (Brasil)</b>
+  <a href="README.md">English</a> · <b>Português (Brasil)</b> · <a href="https://mop4r.github.io/tagteam/pt-br/">Site do projeto</a>
 </p>
 
 <p align="center">

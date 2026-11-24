@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 540" width="1200" height="540" role="img" aria-labelledby="t d">
+<title id="t">TagTeam demo</title>
+<desc id="d">Claude Code hits 95% of its usage limit and writes a handoff; Gemini picks the same conversation up and finishes the step; Grok continues it, and the result is back in Claude Code.</desc>
+<defs><linearGradient id="fundo" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0B0F19"/><stop offset="1" stop-color="#17132B"/></linearGradient></defs>
+<rect width="1200" height="540" rx="24" fill="url(#fundo)"/>
+<g font-family="ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace">
+<rect x="24" y="40" width="372" height="420" rx="16" fill="#0D1117" stroke="#30363D"/>
+<rect x="24" y="40" width="372" height="44" rx="16" fill="#161B22"/><rect x="24" y="70" width="372" height="14" fill="#161B22"/>
+<circle cx="46" cy="62" r="6" fill="#FF5F57"/>
+<circle cx="64" cy="62" r="6" fill="#FEBC2E"/>
+<circle cx="82" cy="62" r="6" fill="#28C840"/>
+<text x="210" y="68" text-anchor="middle" font-size="16" font-weight="700" fill="#D97757">● Claude Code</text>
+<rect x="414" y="40" width="372" height="420" rx="16" fill="#0D1117" stroke="#30363D"/>
+<rect x="414" y="40" width="372" height="44" rx="16" fill="#161B22"/><rect x="414" y="70" width="372" height="14" fill="#161B22"/>
+<circle cx="436" cy="62" r="6" fill="#FF5F57"/>
+<circle cx="454" cy="62" r="6" fill="#FEBC2E"/>
+<circle cx="472" cy="62" r="6" fill="#28C840"/>
+<text x="600" y="68" text-anchor="middle" font-size="16" font-weight="700" fill="#8B7CF6">✦ Gemini · Antigravity</text>
+<rect x="804" y="40" width="372" height="420" rx="16" fill="#0D1117" stroke="#30363D"/>
+<rect x="804" y="40" width="372" height="44" rx="16" fill="#161B22"/><rect x="804" y="70" width="372" height="14" fill="#161B22"/>
+<circle cx="826" cy="62" r="6" fill="#FF5F57"/>
+<circle cx="844" cy="62" r="6" fill="#FEBC2E"/>
+<circle cx="862" cy="62" r="6" fill="#28C840"/>
+<text x="990" y="68" text-anchor="middle" font-size="16" font-weight="700" fill="#C9D1D9">✕ Grok CLI</text>
+<text x="44" y="122" font-size="16" font-weight="600" fill="#E6EDF3">&gt; refactor the auth module to async<animate attributeName="opacity" values="0;1" keyTimes="0;0.0267" calcMode="discrete" dur="15.0s" repeatCount="indefinite"/></text>
+<text x="44" y="162" font-size="16" font-weight="400" fill="#8B949E">● Read src/auth/ (6 files)<animate attributeName="opacity" values="0;1" keyTimes="0;0.0800" calcMode="discrete" dur="15.0s" repeatCount="indefinite"/></text>
+<text x="44" y="202" font-size="16" font-weight="400" fill="#8B949E">● Edited 4 files · tests green<animate attributeName="opacity" values="0;1" keyTimes="0;0.1333" calcMode="discrete" dur="15.0s" repeatCount="indefinite"/></text>
+<text x="44" y="242" font-size="16" font-weight="600" fill="#F0883E">usage ██████████████▏ 95%<animate attributeName="opacity" values="0;1" keyTimes="0;0.1867" calcMode="discrete" dur="15.0s" repeatCount="indefinite"/></text>
+<text x="44" y="282" font-size="16" font-weight="700" fill="#F4A481">## Handoff to Gemini or Grok<animate attributeName="opacity" values="0;1" keyTimes="0;0.2467" calcMode="discrete" dur="15.0s" repeatCount="indefinite"/></text>
+<text x="44" y="322" font-size="16" font-weight="400" fill="#C9D1D9">Done: login, token, middleware<animate attributeName="opacity" values="0;1" keyTimes="0;0.2867" calcMode="discrete" dur="15.0s" repeatCount="indefinite"/></text>
+<text x="44" y="362" font-size="16" font-weight="400" fill="#C9D1D9">Next step: migrate session.py<animate attributeName="opacity" values="0;1" keyTimes="0;0.3200" calcMode="discrete" dur="15.0s" repeatCount="indefinite"/></text>
+<text x="434" y="122" font-size="16" font-weight="700" fill="#C9B8FF">[claude] Refactor auth module<animate attributeName="opacity" values="0;1" keyTimes="0;0.4000" calcMode="discrete" dur="15.0s" repeatCount="indefinite"/></text>
+<text x="434" y="162" font-size="16" font-weight="600" fill="#E6EDF3">&gt; keep going<animate attributeName="opacity" values="0;1" keyTimes="0;0.4467" calcMode="discrete" dur="15.0s" repeatCount="indefinite"/></text>
+<text x="434" y="202" font-size="16" font-weight="400" fill="#8B949E">✦ Following the handoff:<animate attributeName="opacity" values="0;1" keyTimes="0;0.5000" calcMode="discrete" dur="15.0s" repeatCount="indefinite"/></text>
+<text x="434" y="242" font-size="16" font-weight="400" fill="#8B949E">  session.py is next<animate attributeName="opacity" values="0;1" keyTimes="0;0.5333" calcMode="discrete" dur="15.0s" repeatCount="indefinite"/></text>
+<text x="434" y="282" font-size="16" font-weight="600" fill="#3FB950">✦ Done · 12/12 tests pass<animate attributeName="opacity" values="0;1" keyTimes="0;0.5867" calcMode="discrete" dur="15.0s" repeatCount="indefinite"/></text>
+<text x="824" y="122" font-size="16" font-weight="700" fill="#E6EDF3">[Antigravity] Refactor auth<animate attributeName="opacity" values="0;1" keyTimes="0;0.6667" calcMode="discrete" dur="15.0s" repeatCount="indefinite"/></text>
+<text x="824" y="162" font-size="16" font-weight="600" fill="#E6EDF3">&gt; add a changelog entry<animate attributeName="opacity" values="0;1" keyTimes="0;0.7133" calcMode="discrete" dur="15.0s" repeatCount="indefinite"/></text>
+<text x="824" y="202" font-size="16" font-weight="400" fill="#8B949E">✕ CHANGELOG.md updated<animate attributeName="opacity" values="0;1" keyTimes="0;0.7667" calcMode="discrete" dur="15.0s" repeatCount="indefinite"/></text>
+<text x="824" y="242" font-size="16" font-weight="600" fill="#3FB950">↻ back in claude --resume<animate attributeName="opacity" values="0;1" keyTimes="0;0.8200" calcMode="discrete" dur="15.0s" repeatCount="indefinite"/></text>
+<g><animate attributeName="opacity" values="0;1" keyTimes="0;0.3533" calcMode="discrete" dur="15.0s" repeatCount="indefinite"/><circle cx="405" cy="250" r="26" fill="#F4A481"/><text x="405" y="256" text-anchor="middle" font-size="15" font-weight="800" fill="#0B0F19">tag!</text></g>
+<g><animate attributeName="opacity" values="0;1" keyTimes="0;0.6267" calcMode="discrete" dur="15.0s" repeatCount="indefinite"/><circle cx="795" cy="250" r="26" fill="#F4A481"/><text x="795" y="256" text-anchor="middle" font-size="15" font-weight="800" fill="#0B0F19">tag!</text></g>
+</g>
+<g font-family="ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" fill="#9AA4B2"><text x="600" y="506" text-anchor="middle">Same conversation everywhere · <tspan fill="#F4A481">claude --resume</tspan> · <tspan fill="#C9B8FF">agy</tspan> · <tspan fill="#E6EDF3">grok --resume</tspan></text></g>
+</svg>

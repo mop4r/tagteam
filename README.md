@@ -2,8 +2,10 @@
   <img src="assets/banner.svg" alt="TagTeam — one conversation, three AIs: Claude Code, Gemini (Antigravity) and Grok CLI" width="100%">
 </p>
 
+<h1 align="center">TagTeam — Sync Claude Code, Gemini (Antigravity) &amp; Grok CLI Conversations</h1>
+
 <p align="center">
-  <b>English</b> · <a href="README.pt-BR.md">Português (Brasil)</a>
+  <b>English</b> · <a href="README.pt-BR.md">Português (Brasil)</a> · <a href="https://mop4r.github.io/tagteam/">Project site</a>
 </p>
 
 <p align="center">
@@ -146,7 +148,7 @@ python -I sincronizar.py                       # sync everything, every directio
 python -I sincronizar.py --direcao grok        # Claude -> Grok only   (antigravity | claude | grok | claude-de-grok)
 python -I sincronizar.py --sessao <claude-id>  # one Claude session    (--cascade <gemini-id> / --grok <grok-id>)
 python -I sincronizar.py --forcar              # rewrite / recreate deleted copies (never a continued one)
-python -m unittest discover -p "test_*.py"     # 69 tests
+python -m unittest discover -p "test_*.py"     # 76 tests
 ```
 
 | Environment variable | Default | What it does |

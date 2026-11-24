@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TagTeam — Sync Claude Code, Gemini (Antigravity) &amp; Grok CLI Conversations</title>
+  <meta name="description" content="Keep one coding conversation alive across Claude Code, Google Gemini (Antigravity app and agy CLI), and Grok CLI. Two-way native session sync, shared CLAUDE.md/skills/MCP, and automatic 95% usage-limit handoff.">
+  <meta name="robots" content="index, follow">
+  <!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity (canonical/hreflang metadata only, not fetched subresources) -->
+  <link rel="canonical" href="https://mop4r.github.io/tagteam/">
+  <!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity -->
+  <link rel="alternate" hreflang="en" href="https://mop4r.github.io/tagteam/">
+  <!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity -->
+  <link rel="alternate" hreflang="pt-BR" href="https://mop4r.github.io/tagteam/pt-br/">
+  <!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity -->
+  <link rel="alternate" hreflang="x-default" href="https://mop4r.github.io/tagteam/">
+  <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="TagTeam">
+  <meta property="og:title" content="TagTeam — One conversation, three AI coding agents">
+  <meta property="og:description" content="Sync Claude Code, Gemini (Antigravity / agy CLI) and Grok CLI sessions both ways with automatic usage-limit handoff notes. Local, zero dependencies, MIT.">
+  <meta property="og:url" content="https://mop4r.github.io/tagteam/">
+  <meta property="og:image" content="https://mop4r.github.io/tagteam/assets/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="TagTeam banner: Claude Code, Gemini Antigravity and Grok CLI sharing one conversation">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="TagTeam — Sync Claude Code, Gemini (Antigravity) &amp; Grok CLI">
+  <meta name="twitter:description" content="Hit a Claude Code 5-hour usage limit? Tag out and continue the same session in Gemini Antigravity or Grok CLI with automatic handoff.">
+  <meta name="twitter:image" content="https://mop4r.github.io/tagteam/assets/og-image.png">
+
+  <link rel="stylesheet" href="styles.css">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "SoftwareApplication",
+        "name": "TagTeam",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Windows 10, Windows 11",
+        "softwareVersion": "0.1.0",
+        "license": "https://opensource.org/licenses/MIT",
+        "url": "https://mop4r.github.io/tagteam/",
+        "codeRepository": "https://github.com/mop4r/tagteam",
+        "description": "Local two-way conversation sync and automatic usage-limit handoff between Claude Code, Google Gemini (Antigravity desktop app and agy CLI), and xAI Grok CLI.",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        },
+        "programmingLanguage": "Python"
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "How does TagTeam continue a Claude Code conversation in Gemini Antigravity or Grok CLI?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Hooks in Claude Code, Antigravity and Grok CLI trigger TagTeam after replies to mirror sessions directly in each tool's native format (Claude JSONL, Antigravity SQLite + protobuf, Grok ACP JSONL), so claude --resume, agy, Antigravity and grok --resume all list the same conversations."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What happens when Claude Code or Gemini hits 95% of its usage limit?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "A Stop hook blocks once at 95% usage and asks the agent to write a structured five-line handoff (Request, Done, In progress, Next step, Watch out). The synced copy carries that note to the next AI."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Does TagTeam send conversations to an external server or proxy?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "No. TagTeam runs 100% locally with Python standard library file I/O and Antigravity's local language server. There is no telemetry, no remote server, and no API key required."
+            }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap topbar-inner">
+      <a class="brand" href="./">
+        <img src="assets/logo.svg" alt="" width="28" height="28">
+        <span>TagTeam</span>
+      </a>
+      <nav class="nav" aria-label="Main navigation">
+        <a href="#install">Quick start</a>
+        <a href="#mirrored">What syncs</a>
+        <a href="#faq">FAQ</a>
+        <a href="pt-br/" lang="pt-BR">Português</a>
+        <a class="nav-cta" href="https://github.com/mop4r/tagteam">View on GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="hero" style="border-top: none;">
+      <h1>One conversation across Claude Code, Gemini and Grok CLI.</h1>
+      <p class="lead">
+        When a 5-hour usage limit hits mid-refactor, switch tools without starting over.
+        TagTeam mirrors your real native sessions both ways and writes a five-line handoff note before stopping.
+      </p>
+      <ul class="agents" aria-label="Supported AI coding agents">
+        <li><span class="dot dot-claude" aria-hidden="true"></span>Claude Code</li>
+        <li><span class="dot dot-gemini" aria-hidden="true"></span>Gemini · Antigravity &amp; agy CLI</li>
+        <li><span class="dot dot-grok" aria-hidden="true"></span>Grok CLI</li>
+      </ul>
+      <div class="actions">
+        <a class="btn btn-primary" href="#install">Install on Windows</a>
+        <a class="btn btn-secondary" href="https://github.com/mop4r/tagteam">GitHub repository</a>
+        <a class="btn btn-secondary" href="https://github.com/mop4r/tagteam/blob/main/docs/HOW-IT-WORKS.md">How it works</a>
+      </div>
+
+      <figure class="demo-frame">
+        <img src="assets/demo.svg" alt="TagTeam relay flow: Claude Code hits 95% usage limit, writes a handoff, Gemini Antigravity continues the same session, then Grok CLI continues and syncs back to claude --resume" width="960" height="540">
+        <figcaption>Native session sync in all directions — no chat wrapper, no API proxy, zero external Python dependencies.</figcaption>
+      </figure>
+    </section>
+
+    <section id="install">
+      <h2>Install in three commands</h2>
+      <p>Requires Windows 10/11, Python 3.11+ and Claude Code. The installer sets up hooks, mirrors your environment, and installs the official <code>agy</code> and <code>grok</code> CLIs if missing.</p>
+      <div class="code-block">
+        <button class="copy-btn" type="button" data-copy="install-cmd">Copy</button>
+        <pre id="install-cmd">git clone https://github.com/mop4r/tagteam "$HOME\.claude\skills\tagteam"
+python -I "$HOME\.claude\skills\tagteam\scripts\instalar.py"
+agy
+grok</pre>
+      </div>
+      <p>Sign in once to <code>agy</code> and <code>grok</code>, then keep working as usual. Every session shows up natively in <code>claude --resume</code>, the Antigravity sidebar, the <code>Agy CLI --resume</code> picker, and <code>Grok --resume</code>.</p>
+
+      <ul class="feature-list">
+        <li>
+          <strong>Three-way native sync</strong>
+          <span>Claude JSONL, Antigravity SQLite + protobuf (desktop app and CLI), and Grok ACP JSONL stay in sync through hooks.</span>
+        </li>
+        <li>
+          <strong>Automatic 95% limit handoff</strong>
+          <span>Before stopping, the agent writes Request, Done, In progress, Next step, and Watch out so the next AI picks up cleanly.</span>
+        </li>
+        <li>
+          <strong>Same rules, skills and MCP servers</strong>
+          <span>Gemini and Grok reference your <code>~/.claude/CLAUDE.md</code>, skills, plugins, and MCP servers without duplicating files.</span>
+        </li>
+        <li>
+          <strong>Conflict-safe and 100% local</strong>
+          <span>Continued sessions are never overwritten, mirrors never bounce back, and nothing leaves your machine.</span>
+        </li>
+      </ul>
+    </section>
+
+    <section id="mirrored">
+      <h2>What stays in sync</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>From Claude Code</th>
+              <th>Gemini (Antigravity / agy)</th>
+              <th>Grok CLI</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Conversations</td>
+              <td>Both ways (desktop app + CLI)</td>
+              <td>Both ways</td>
+            </tr>
+            <tr>
+              <td><code>~/.claude/CLAUDE.md</code></td>
+              <td>Referenced from generated <code>~/.gemini/GEMINI.md</code></td>
+              <td>Loaded natively + <code>~/.grok/AGENTS.md</code></td>
+            </tr>
+            <tr>
+              <td>Skills (<code>~/.claude/skills</code>)</td>
+              <td><code>config/skills.json</code></td>
+              <td>Native</td>
+            </tr>
+            <tr>
+              <td>Plugins &amp; MCP servers</td>
+              <td><code>config/plugins.json</code> &amp; <code>mcp_config.json</code></td>
+              <td>Enabled in <code>config.toml</code></td>
+            </tr>
+            <tr>
+              <td>Automatic handoff at 95%</td>
+              <td>Yes (via local quota API)</td>
+              <td>Manual (Grok CLI has no non-TUI usage API yet)</td>
+            </tr>
+            <tr>
+              <td>Interactive resume picker</td>
+              <td><code>Agy CLI --resume</code> shortcut</td>
+              <td><code>Grok --resume</code> shortcut</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="handoff">
+      <h2>The five-line handoff</h2>
+      <p>At 95% of the Claude 5-hour or 7-day limit (or Gemini quota), the <code>Stop</code> hook pauses once so the agent leaves a short handoff note at the end of the chat:</p>
+      <div class="code-block">
+        <pre>## Handoff to Gemini or Grok
+- Request: migrate the auth module to async.
+- Done: login, token and middleware migrated; 34 tests green (commit 3f2a91c).
+- In progress: session.py half done, branch feat/async-auth.
+- Next step: finish SessionStore.refresh() and run tests/auth.
+- Watch out: don't touch the legacy /v1 routes; credentials are in .env.local.</pre>
+      </div>
+    </section>
+
+    <section id="faq">
+      <h2>Frequently asked questions</h2>
+      <details>
+        <summary>How does TagTeam continue a Claude Code conversation in Gemini Antigravity or Grok CLI?</summary>
+        <p>Hooks in Claude Code, Antigravity and Grok CLI call TagTeam after replies (throttled to once every 2 minutes per conversation). TagTeam converts and writes directly to each agent's native session storage so resume works inside each tool.</p>
+      </details>
+      <details>
+        <summary>Does it send my code or chats to a remote server?</summary>
+        <p>No. Everything is local file I/O plus Antigravity's local language server. No telemetry, no proxy, and no third-party API keys.</p>
+      </details>
+      <details>
+        <summary>Can I sync across multiple Windows PCs?</summary>
+        <p>Yes. Sync <code>~/.claude/projects</code> with git, Syncthing, or OneDrive. TagTeam keeps sync state per PC and remaps workspace paths across different usernames and drives.</p>
+      </details>
+      <details>
+        <summary>What about macOS and Linux?</summary>
+        <p>The core sync engine is pure Python standard library; Windows shortcuts and the Grok picker are Windows-specific today. Pull requests for macOS and Linux are welcome on GitHub.</p>
+      </details>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap footer-inner">
+      <span>TagTeam — MIT License. Independent open-source project, not affiliated with Anthropic, Google or xAI.</span>
+      <span>
+        <a href="https://github.com/mop4r/tagteam">GitHub</a> ·
+        <a href="https://github.com/mop4r/tagteam/releases">Releases</a> ·
+        <a href="llms.txt">llms.txt</a>
+      </span>
+    </div>
+  </footer>
+
+  <script>
+    document.querySelectorAll("[data-copy]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var target = document.getElementById(btn.getAttribute("data-copy"));
+        if (!target || !navigator.clipboard) return;
+        navigator.clipboard.writeText(target.textContent).then(function () {
+          var prev = btn.textContent;
+          btn.textContent = "Copied";
+          setTimeout(function () { btn.textContent = prev; }, 1600);
+        });
+      });
+    });
+  </script>
+</body>
+</html>

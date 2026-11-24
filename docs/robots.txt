@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://mop4r.github.io/tagteam/sitemap.xml
