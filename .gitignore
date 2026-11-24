@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+# templates saved from YOUR native Antigravity conversation: they contain your text and paths
+moldes/
+*.exe
+.tagteam/
