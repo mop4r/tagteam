@@ -9,7 +9,7 @@ import re
 import sqlite3
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import timezone
 
 import pb
 

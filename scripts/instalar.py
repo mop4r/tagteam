@@ -74,7 +74,7 @@ def montar_skills_e_plugins():
     if os.path.isdir(os.path.join(CLAUDE, "skills")):
         entradas.append({"path": p(os.path.join(CLAUDE, "skills"))})
     plugins = []
-    for nome, pasta in plugins_do_claude():
+    for _nome, pasta in plugins_do_claude():
         if any(os.path.isfile(os.path.join(pasta, m)) for m in (".antigravity-plugin/plugin.json", ".gemini-plugin/plugin.json")):
             plugins.append({"path": p(pasta)})
         elif os.path.isdir(os.path.join(pasta, "skills")):
