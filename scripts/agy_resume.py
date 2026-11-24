@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+from ctypes import wintypes
 import json
 import os
 import re
@@ -21,7 +22,7 @@ import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Iterable
+from typing import Callable, Iterable, TextIO
 from urllib.parse import unquote
 
 CONVERSATION_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
@@ -32,6 +33,19 @@ PBTXT_TITLE_RE = re.compile(r'title\s*:\s*"((?:\\.|[^"\\])*)"')
 SQLITE_TIMEOUT_SECONDS = 3.0
 MAX_PREVIEW_CHARS = 240
 MAX_TITLE_CHARS = 200
+
+STD_INPUT_HANDLE = -10
+STD_OUTPUT_HANDLE = -11
+ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
+ENABLE_WINDOW_INPUT = 0x0008
+KEY_EVENT = 0x0001
+WINDOW_BUFFER_SIZE_EVENT = 0x0004
+WAIT_OBJECT_0 = 0x00000000
+WAIT_TIMEOUT = 0x00000102
+RESIZE_POLL_MS = 80
+MAX_DRAIN_EVENTS = 256
+ALT_SCREEN_ENTER = "\x1b[?1049h\x1b[?25l\x1b[2J\x1b[H"
+ALT_SCREEN_EXIT = "\x1b[0m\x1b[2J\x1b[H\x1b[?25h\x1b[?1049l"
 
 
 @dataclass(frozen=True)
@@ -257,13 +271,36 @@ def shorten_path(path: str, home: str) -> str:
     return path
 
 
+def char_width(ch: str) -> int:
+    """Largura aproximada em células do terminal (2 para CJK/emojis largos, 0 para marcas)."""
+    if unicodedata.combining(ch):
+        return 0
+    if unicodedata.east_asian_width(ch) in ("W", "F"):
+        return 2
+    return 1
+
+
+def display_width(text: str) -> int:
+    """Largura visual aproximada do texto em colunas do terminal."""
+    return sum(char_width(ch) for ch in text)
+
+
 def truncate_line(text: str, width: int) -> str:
-    """Trunca texto para caber na largura do terminal."""
+    """Trunca texto para caber na largura visual do terminal sem quebrar linha."""
     if width <= 1:
         return ""
-    if len(text) <= width:
+    if display_width(text) <= width:
         return text
-    return text[: width - 1] + "…"
+    out: list[str] = []
+    used = 0
+    limit = width - 1
+    for ch in text:
+        w = char_width(ch)
+        if used + w > limit:
+            break
+        out.append(ch)
+        used += w
+    return "".join(out) + "…"
 
 
 def resolve_agy_executable() -> Path | None:
@@ -277,19 +314,122 @@ def resolve_agy_executable() -> Path | None:
     return Path(found) if found else None
 
 
-def enable_windows_vt_mode() -> None:
-    """Habilita sequências ANSI no console do Windows (no-op fora do Windows)."""
+class _WinInputRecord(ctypes.Structure):
+    """Espelho de INPUT_RECORD (20 bytes) apenas para inspecionar EventType."""
+
+    _fields_ = [
+        ("EventType", ctypes.c_uint16),
+        ("_pad", ctypes.c_uint16),
+        ("Event", ctypes.c_byte * 16),
+    ]
+
+
+def _win_kernel32():
+    """Instância dedicada de kernel32 com assinaturas corretas para Windows 64-bit."""
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.GetStdHandle.argtypes = [wintypes.DWORD]
+    k32.GetStdHandle.restype = wintypes.HANDLE
+    k32.GetConsoleMode.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+    k32.GetConsoleMode.restype = wintypes.BOOL
+    k32.SetConsoleMode.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    k32.SetConsoleMode.restype = wintypes.BOOL
+    k32.PeekConsoleInputW.argtypes = [
+        wintypes.HANDLE,
+        ctypes.POINTER(_WinInputRecord),
+        wintypes.DWORD,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    k32.PeekConsoleInputW.restype = wintypes.BOOL
+    k32.ReadConsoleInputW.argtypes = [
+        wintypes.HANDLE,
+        ctypes.POINTER(_WinInputRecord),
+        wintypes.DWORD,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    k32.ReadConsoleInputW.restype = wintypes.BOOL
+    k32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    k32.WaitForSingleObject.restype = wintypes.DWORD
+    return k32
+
+
+def _is_valid_win_handle(handle: object) -> bool:
+    if not handle:
+        return False
+    invalid = ctypes.c_void_p(-1).value
+    return handle != invalid
+
+
+def configure_windows_console() -> tuple[int | None, int | None]:
+    """Habilita VT na saída e eventos de resize na entrada, devolvendo modos originais."""
     if os.name != "nt":
+        return (None, None)
+    orig_out: int | None = None
+    orig_in: int | None = None
+    try:
+        k32 = _win_kernel32()
+        out_handle = k32.GetStdHandle(STD_OUTPUT_HANDLE)
+        if _is_valid_win_handle(out_handle):
+            mode = wintypes.DWORD()
+            if k32.GetConsoleMode(out_handle, ctypes.byref(mode)):
+                orig_out = int(mode.value)
+                k32.SetConsoleMode(out_handle, orig_out | ENABLE_VIRTUAL_TERMINAL_PROCESSING)
+        in_handle = k32.GetStdHandle(STD_INPUT_HANDLE)
+        if _is_valid_win_handle(in_handle):
+            mode = wintypes.DWORD()
+            if k32.GetConsoleMode(in_handle, ctypes.byref(mode)):
+                orig_in = int(mode.value)
+                k32.SetConsoleMode(in_handle, orig_in | ENABLE_WINDOW_INPUT)
+    except OSError:
+        # Console redirecionado ou sem suporte VT; continua degradando limpo
+        return (orig_out, orig_in)
+    return (orig_out, orig_in)
+
+
+def restore_windows_console(orig_out: int | None, orig_in: int | None) -> None:
+    """Restaura os modos originais do console antes de passar o controle ao agy.exe."""
+    if os.name != "nt" or (orig_out is None and orig_in is None):
         return
     try:
-        kernel32 = ctypes.windll.kernel32
-        handle = kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
-        mode = ctypes.c_uint32()
-        if kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
-            kernel32.SetConsoleMode(handle, mode.value | 0x0004)
-    except Exception:
-        # Console redirecionado ou sem suporte VT; continua degradando limpo
+        k32 = _win_kernel32()
+        if orig_out is not None:
+            out_handle = k32.GetStdHandle(STD_OUTPUT_HANDLE)
+            if _is_valid_win_handle(out_handle):
+                k32.SetConsoleMode(out_handle, orig_out)
+        if orig_in is not None:
+            in_handle = k32.GetStdHandle(STD_INPUT_HANDLE)
+            if _is_valid_win_handle(in_handle):
+                k32.SetConsoleMode(in_handle, orig_in)
+    except OSError:
         return
+
+
+def get_live_terminal_size(fallback: tuple[int, int] = (100, 30)) -> tuple[int, int]:
+    """Lê o tamanho atual diretamente do console (ignora COLUMNS/LINES congelados do env)."""
+    try:
+        size = os.get_terminal_size(sys.stdout.fileno())
+    except (OSError, ValueError, AttributeError):
+        size = shutil.get_terminal_size(fallback)
+    else:
+        if size.columns <= 0 or size.lines <= 0:
+            size = shutil.get_terminal_size(fallback)
+    return (size.columns, size.lines)
+
+
+def _drain_non_key_console_events(k32: object, in_handle: object) -> bool:
+    """Consome eventos não-tecla do topo da fila do console sem tocar em KEY_EVENT."""
+    saw_resize = False
+    rec = _WinInputRecord()
+    read_count = wintypes.DWORD(0)
+    for _ in range(MAX_DRAIN_EVENTS):
+        if not k32.PeekConsoleInputW(in_handle, ctypes.byref(rec), 1, ctypes.byref(read_count)):
+            break
+        if read_count.value == 0 or rec.EventType == KEY_EVENT:
+            break
+        if not k32.ReadConsoleInputW(in_handle, ctypes.byref(rec), 1, ctypes.byref(read_count)):
+            break
+        if rec.EventType == WINDOW_BUFFER_SIZE_EVENT:
+            saw_resize = True
+    return saw_resize
 
 
 def read_key() -> tuple[str, str]:
@@ -325,6 +465,40 @@ def read_key() -> tuple[str, str]:
     return ("IGNORED", "")
 
 
+def read_event(
+    last_size: tuple[int, int],
+    get_size_fn: Callable[[], tuple[int, int]] = get_live_terminal_size,
+    poll_ms: int = RESIZE_POLL_MS,
+) -> tuple[str, str]:
+    """Aguarda uma tecla ou redimensionamento do terminal sem busy-wait."""
+    if os.name != "nt":
+        return read_key()
+
+    import msvcrt
+
+    try:
+        k32 = _win_kernel32()
+        in_handle = k32.GetStdHandle(STD_INPUT_HANDLE)
+    except OSError:
+        return read_key()
+
+    if not _is_valid_win_handle(in_handle):
+        return read_key()
+
+    while True:
+        if get_size_fn() != last_size:
+            return ("RESIZE", "")
+        if msvcrt.kbhit():
+            return read_key()
+        if _drain_non_key_console_events(k32, in_handle):
+            return ("RESIZE", "")
+        if msvcrt.kbhit():
+            return read_key()
+        wait = k32.WaitForSingleObject(in_handle, poll_ms)
+        if wait not in (WAIT_OBJECT_0, WAIT_TIMEOUT):
+            return read_key()
+
+
 def render_picker(
     items: list[ConversationItem],
     selected: int,
@@ -337,15 +511,17 @@ def render_picker(
     total_all: int,
     now: datetime,
     term_size: tuple[int, int],
+    full_clear: bool = False,
 ) -> tuple[str, int]:
-    """Monta a tela ANSI do seletor e devolve (texto, novo_scroll)."""
+    """Monta a tela ANSI do seletor com exatamente `rows` linhas e devolve (texto, novo_scroll)."""
     cols, rows = term_size
-    cols = max(40, cols)
-    rows = max(12, rows)
+    cols = max(20, cols)
+    rows = max(8, rows)
+    line_width = max(10, cols - 1)
 
     header_lines = 5
     footer_lines = 2
-    list_height = max(3, rows - header_lines - footer_lines)
+    list_height = max(1, rows - header_lines - footer_lines)
 
     if selected < scroll:
         scroll = selected
@@ -360,17 +536,18 @@ def render_picker(
         else f"{shorten_path(cwd, home)} ({total_in_scope} nesta pasta / {total_all} no total)"
     )
 
-    out: list[str] = ["\x1b[H\x1b[2J"]
-    out.append(
-        "\x1b[1;36m"
-        + truncate_line("Agy CLI — Retomar conversa", cols)
-        + "\x1b[0m"
-    )
-    out.append("\x1b[2m" + truncate_line(scope_label, cols) + "\x1b[0m")
-    search_text = f"Buscar: {query}▌" if query else "Buscar: (digite para filtrar)"
-    out.append(truncate_line(search_text, cols))
-    out.append("\x1b[2m" + ("─" * min(cols, 100)) + "\x1b[0m")
-    out.append("")
+    rule = "─" * line_width
+    lines: list[str] = [
+        "\x1b[1;36m" + truncate_line("Agy CLI — Retomar conversa", line_width) + "\x1b[0m\x1b[K",
+        "\x1b[2m" + truncate_line(scope_label, line_width) + "\x1b[0m\x1b[K",
+        truncate_line(
+            f"Buscar: {query}▌" if query else "Buscar: (digite para filtrar)",
+            line_width,
+        )
+        + "\x1b[K",
+        f"\x1b[2m{rule}\x1b[0m\x1b[K",
+        "\x1b[K",
+    ]
 
     if not items:
         if query:
@@ -379,9 +556,9 @@ def render_picker(
             msg = "Nenhuma conversa nesta pasta. Aperte Tab para ver todas ou Ctrl+N para nova conversa."
         else:
             msg = "Ainda não há conversas salvas do Agy CLI. Aperte Enter ou Ctrl+N para iniciar uma nova."
-        out.append("\x1b[33m" + truncate_line("  " + msg, cols) + "\x1b[0m")
+        lines.append("\x1b[33m" + truncate_line("  " + msg, line_width) + "\x1b[0m\x1b[K")
         for _ in range(list_height - 1):
-            out.append("")
+            lines.append("\x1b[K")
     else:
         visible = items[scroll : scroll + list_height]
         for offset, item in enumerate(visible):
@@ -394,22 +571,25 @@ def render_picker(
                 ws_suffix = f"  [{shorten_path(item.workspaces[0], home)}]"
             meta = f"{when} · {steps}{ws_suffix}"
             prefix = "❯ " if is_sel else "  "
-            avail_title = max(12, cols - len(prefix) - len(meta) - 3)
+            prefix_w = display_width(prefix)
+            meta_w = display_width(meta)
+            avail_title = max(8, line_width - prefix_w - meta_w - 2)
             title_part = truncate_line(item.title, avail_title)
-            gap = max(1, cols - len(prefix) - len(title_part) - len(meta) - 1)
-            line = f"{prefix}{title_part}{' ' * gap}{meta}"
-            line = truncate_line(line, cols)
+            gap = max(1, line_width - prefix_w - display_width(title_part) - meta_w)
+            line = truncate_line(f"{prefix}{title_part}{' ' * gap}{meta}", line_width)
             if is_sel:
-                out.append(f"\x1b[7m{line}\x1b[0m")
+                lines.append(f"\x1b[7m{line}\x1b[0m\x1b[K")
             else:
-                out.append(line)
+                lines.append(f"{line}\x1b[K")
         for _ in range(list_height - len(visible)):
-            out.append("")
+            lines.append("\x1b[K")
 
-    out.append("\x1b[2m" + ("─" * min(cols, 100)) + "\x1b[0m")
+    lines.append(f"\x1b[2m{rule}\x1b[0m\x1b[K")
     footer = "↑/↓ mover  Enter abrir  Tab pasta/todas  Ctrl+N nova  Esc limpar/sair"
-    out.append("\x1b[2m" + truncate_line(footer, cols) + "\x1b[0m")
-    return ("\r\n".join(out), scroll)
+    lines.append("\x1b[2m" + truncate_line(footer, line_width) + "\x1b[0m\x1b[K")
+
+    prefix_seq = "\x1b[2J\x1b[H" if full_clear else "\x1b[H"
+    return (prefix_seq + "\r\n".join(lines) + "\x1b[J", scroll)
 
 
 def run_interactive_picker(
@@ -417,25 +597,35 @@ def run_interactive_picker(
     cwd: str,
     home: str,
     clock: Callable[[], datetime],
+    read_event_fn: Callable[[tuple[int, int]], tuple[str, str]] | None = None,
+    get_size_fn: Callable[[], tuple[int, int]] | None = None,
+    stream: TextIO | None = None,
 ) -> tuple[str, str | None]:
-    """Executa o seletor interativo.
+    """Executa o seletor interativo no alternate screen buffer.
 
     Devolve:
       ("open", conversation_id) — abrir conversa existente
       ("new", None)             — iniciar nova conversa
       ("cancel", None)          — usuário cancelou
     """
-    enable_windows_vt_mode()
+    out = sys.stdout if stream is None else stream
+    size_fn = get_live_terminal_size if get_size_fn is None else get_size_fn
+    event_fn = (lambda last: read_event(last, size_fn)) if read_event_fn is None else read_event_fn
+
+    use_real_console = stream is None and read_event_fn is None
+    orig_out, orig_in = configure_windows_console() if use_real_console else (None, None)
+
     show_all = False
     query = ""
     selected = 0
     scroll = 0
+    last_size: tuple[int, int] | None = None
 
     total_all = len(all_items)
     total_in_scope = len(filter_conversations(all_items, cwd, show_all=False, query=""))
 
-    sys.stdout.write("\x1b[?25l")
-    sys.stdout.flush()
+    out.write(ALT_SCREEN_ENTER)
+    out.flush()
     try:
         while True:
             filtered = filter_conversations(all_items, cwd, show_all=show_all, query=query)
@@ -444,7 +634,10 @@ def run_interactive_picker(
             else:
                 selected = 0
 
-            size = shutil.get_terminal_size((100, 30))
+            current_size = size_fn()
+            needs_full_clear = last_size is None or current_size != last_size
+            last_size = current_size
+
             frame, scroll = render_picker(
                 items=filtered,
                 selected=selected,
@@ -456,12 +649,15 @@ def run_interactive_picker(
                 total_in_scope=total_in_scope,
                 total_all=total_all,
                 now=clock(),
-                term_size=(size.columns, size.lines),
+                term_size=current_size,
+                full_clear=needs_full_clear,
             )
-            sys.stdout.write(frame)
-            sys.stdout.flush()
+            out.write(frame)
+            out.flush()
 
-            key, ch = read_key()
+            key, ch = event_fn(last_size)
+            if key == "RESIZE":
+                continue
             if key == "CTRL_C":
                 return ("cancel", None)
             if key == "ESC":
@@ -504,8 +700,10 @@ def run_interactive_picker(
                 selected = 0
                 scroll = 0
     finally:
-        sys.stdout.write("\x1b[?25h\x1b[H\x1b[2J")
-        sys.stdout.flush()
+        out.write(ALT_SCREEN_EXIT)
+        out.flush()
+        if use_real_console:
+            restore_windows_console(orig_out, orig_in)
 
 
 def build_agy_command(

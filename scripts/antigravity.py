@@ -412,8 +412,13 @@ def apagar_com_app_fechado(cascade, base=None):
             [os.path.join(base, "annotations", cascade + ".pbtxt")]:
         if os.path.exists(caminho):
             os.remove(caminho)
-    c = sqlite3.connect(os.path.join(base, "conversation_summaries.db"), timeout=15)
+    indice = os.path.join(base, "conversation_summaries.db")
+    if not os.path.exists(indice):
+        return            # app/CLI nunca abriu neste PC: connect criaria um indice vazio
+    c = sqlite3.connect(indice, timeout=15)
     try:
+        if not c.execute("select 1 from sqlite_master where name='conversation_summaries'").fetchone():
+            return
         c.execute("delete from conversation_summaries where conversation_id=?", (cascade,))
         c.commit()
     finally:

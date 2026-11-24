@@ -331,5 +331,25 @@ class TestParaClaude(unittest.TestCase):
         self.assertEqual(os.path.basename(para_claude.pasta_do_projeto("C:\\Meu Dir", raiz)), "C--Meu-Dir")
 
 
+class TestApagarSemIndice(unittest.TestCase):
+    def test_sem_indice_apaga_conversa_e_nao_cria_indice(self):
+        base = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, base)
+        os.makedirs(os.path.join(base, "conversations"))
+        db = os.path.join(base, "conversations", CASCADE_M + ".db")
+        open(db, "wb").close()
+        antigravity.apagar_com_app_fechado(CASCADE_M, base)
+        self.assertFalse(os.path.exists(db))
+        self.assertFalse(os.path.exists(os.path.join(base, "conversation_summaries.db")))
+
+    def test_indice_vazio_sem_tabela_nao_falha(self):
+        base = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, base)
+        indice = os.path.join(base, "conversation_summaries.db")
+        open(indice, "wb").close()
+        antigravity.apagar_com_app_fechado(CASCADE_M, base)
+        self.assertEqual(os.path.getsize(indice), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -233,6 +233,150 @@ class AgyResumeTests(unittest.TestCase):
         )
         self.assertIn("Nenhuma conversa nesta pasta", frame_empty_dir)
 
+    def test_render_picker_fits_exact_rows_without_leading_blank_line_and_spans_wide_terminal(self) -> None:
+        tz = timezone(timedelta(hours=-3))
+        now = datetime(2026, 11, 24, 16, 10, 0, tzinfo=tz)
+        item = agy_resume.ConversationItem(
+            conversation_id="11111111-1111-1111-1111-111111111111",
+            title="Conversa de teste",
+            preview="preview",
+            step_count=4,
+            last_modified=now - timedelta(minutes=5),
+            workspaces=(agy_resume.normalize_win_path(r"C:\Users\Jane Doe\workspace"),),
+        )
+        cols, rows = 160, 24
+        frame, _ = agy_resume.render_picker(
+            items=[item],
+            selected=0,
+            scroll=0,
+            query="",
+            show_all=False,
+            cwd=r"C:\Users\Jane Doe\workspace",
+            home=r"C:\Users\Jane Doe",
+            total_in_scope=1,
+            total_all=1,
+            now=now,
+            term_size=(cols, rows),
+        )
+        # Não pode emitir quebra de linha logo após posicionar no topo (causava scroll e cortava o cabeçalho)
+        self.assertFalse(frame.startswith("\x1b[H\x1b[2J\r\n"))
+        self.assertFalse(frame.startswith("\x1b[H\r\n"))
+        # Deve produzir exatamente `rows` linhas (rows - 1 separadores CRLF)
+        lines = frame.split("\r\n")
+        self.assertEqual(len(lines), rows)
+        # A régua separadora deve acompanhar janelas largas (não ficar travada em 100 colunas)
+        self.assertIn("─" * 150, frame)
+
+    def test_run_interactive_picker_uses_alternate_screen_and_redraws_on_resize(self) -> None:
+        import io
+
+        tz = timezone(timedelta(hours=-3))
+        now = datetime(2026, 11, 24, 16, 10, 0, tzinfo=tz)
+        item = agy_resume.ConversationItem(
+            conversation_id="11111111-1111-1111-1111-111111111111",
+            title="Conversa 1",
+            preview="preview",
+            step_count=4,
+            last_modified=now - timedelta(minutes=2),
+            workspaces=(agy_resume.normalize_win_path(r"C:\Users\Jane Doe\workspace"),),
+        )
+
+        sizes = [(100, 20), (160, 40)]
+        size_idx = 0
+        events = iter([("RESIZE", ""), ("ENTER", "")])
+
+        def fake_get_size() -> tuple[int, int]:
+            return sizes[size_idx]
+
+        def fake_read_event(last_size: tuple[int, int]) -> tuple[str, str]:
+            nonlocal size_idx
+            ev = next(events)
+            if ev[0] == "RESIZE":
+                size_idx = 1
+            return ev
+
+        buf = io.StringIO()
+        action, conv_id = agy_resume.run_interactive_picker(
+            all_items=[item],
+            cwd=r"C:\Users\Jane Doe\workspace",
+            home=r"C:\Users\Jane Doe",
+            clock=lambda: now,
+            read_event_fn=fake_read_event,
+            get_size_fn=fake_get_size,
+            stream=buf,
+        )
+
+        output = buf.getvalue()
+        self.assertEqual((action, conv_id), ("open", "11111111-1111-1111-1111-111111111111"))
+        # Entra no alternate screen buffer no início e sai no fim (lista some totalmente antes do agy abrir)
+        self.assertTrue(output.startswith("\x1b[?1049h"))
+        self.assertTrue(output.endswith("\x1b[?1049l"))
+        self.assertIn("\x1b[?25h", output[output.rfind("\x1b[?25h") :])
+        # Redesenhou com a largura nova (160 colunas) após o evento RESIZE sem esperar tecla
+        self.assertIn("─" * 150, output)
+
+    def test_run_interactive_picker_leaves_alternate_screen_even_on_error(self) -> None:
+        import io
+
+        tz = timezone(timedelta(hours=-3))
+        now = datetime(2026, 11, 24, 16, 10, 0, tzinfo=tz)
+
+        def boom(_last_size: tuple[int, int]) -> tuple[str, str]:
+            raise KeyboardInterrupt()
+
+        buf = io.StringIO()
+        with self.assertRaises(KeyboardInterrupt):
+            agy_resume.run_interactive_picker(
+                all_items=[],
+                cwd=r"C:\Users\Jane Doe\workspace",
+                home=r"C:\Users\Jane Doe",
+                clock=lambda: now,
+                read_event_fn=boom,
+                get_size_fn=lambda: (100, 20),
+                stream=buf,
+            )
+
+        output = buf.getvalue()
+        self.assertTrue(output.startswith("\x1b[?1049h"))
+        self.assertTrue(output.endswith("\x1b[?1049l"))
+
+    def test_truncate_line_respects_wide_characters_and_win_input_record_size(self) -> None:
+        import ctypes
+
+        self.assertEqual(ctypes.sizeof(agy_resume._WinInputRecord), 20)
+        wide = "🚀🎉🔥abc"
+        truncated = agy_resume.truncate_line(wide, 6)
+        self.assertLessEqual(agy_resume.display_width(truncated), 6)
+        self.assertTrue(truncated.endswith("…"))
+
+    def test_drain_non_key_console_events_consumes_resize_and_leaves_keys_intact(self) -> None:
+        import ctypes
+
+        queue = [
+            0x0010,  # FOCUS_EVENT
+            agy_resume.WINDOW_BUFFER_SIZE_EVENT,
+            agy_resume.KEY_EVENT,
+        ]
+
+        class FakeKernel32:
+            def PeekConsoleInputW(self, _h, rec_ptr, _n, count_ptr):
+                if not queue:
+                    count_ptr._obj.value = 0
+                    return 1
+                rec_ptr._obj.EventType = queue[0]
+                count_ptr._obj.value = 1
+                return 1
+
+            def ReadConsoleInputW(self, _h, rec_ptr, _n, count_ptr):
+                rec_ptr._obj.EventType = queue.pop(0)
+                count_ptr._obj.value = 1
+                return 1
+
+        saw_resize = agy_resume._drain_non_key_console_events(FakeKernel32(), ctypes.c_void_p(1))
+        self.assertTrue(saw_resize)
+        # KEY_EVENT não pode ser consumido pelo dreno (fica para msvcrt.getwch)
+        self.assertEqual(queue, [agy_resume.KEY_EVENT])
+
 
 if __name__ == "__main__":
     unittest.main()
