@@ -134,5 +134,8 @@ each AI syncs with Claude, and whatever just arrived from one side is relayed to
 - `~/.cursor/hooks.json` runs `gancho_cursor.py` on `stop` and `sessionEnd` (with `-p` only `sessionEnd` fires).
 - Environment: Cursor reads `~/.claude/skills`, `~/.codex/skills`, `~/.grok/skills`, `CLAUDE.md` and Claude's enabled
   plugins natively; `instalar.py` writes `~/.cursor/mcp.json` and the claude.ai skill junctions in `~/.cursor/skills`.
-- The Cursor **app** stores its own chats in `%APPDATA%\Cursor\User\globalStorage\state.vscdb`; its setting *Import
-  Claude Code Conversations* shows Claude's sessions there.
+- The Cursor **app** stores its own chats in `%APPDATA%\Cursor\User\globalStorage\state.vscdb` (table
+  `cursorDiskKV`: `composerData:<id>`, `composerConvHeaders:<id>:<chunk>` with the message order, `bubbleId:<id>:<msg>`
+  with the text). TagTeam reads them **read-only** and sends them to Claude as "[Cursor] …" (the app fires the same
+  `~/.cursor/hooks.json`). Claude → app is the app's own setting *Import Claude Code Conversations*: writing into the
+  live app database would be fragile.

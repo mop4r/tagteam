@@ -152,8 +152,9 @@ Test it without waiting for the limit: `set TAGTEAM_HANDOFF_THRESHOLD=10`.
 
 **Cursor:** conversations both ways with the `cursor-agent` CLI; Cursor reads `CLAUDE.md`, Claude's skills and enabled
 plugins natively, and TagTeam writes `~/.cursor/mcp.json`, the `~/.cursor/hooks.json` hook and the claude.ai skill
-junctions. The Cursor **app** keeps its chats elsewhere; its built-in *Import Claude Code Conversations* setting shows
-Claude's sessions (and so every copy TagTeam relays) there.
+junctions. Chats made in the Cursor **app** are read from its database and reach Claude (and the others) too; for the
+other direction, turn on the app's *Import Claude Code Conversations* setting, which shows Claude's sessions (and so
+every copy TagTeam relays) there.
 
 ## 🛠️ Manual commands
 
@@ -213,7 +214,6 @@ Not yet: the shortcuts, the Grok picker and some paths are Windows-specific. The
 - [x] Cursor CLI, five-way relay
 - [ ] macOS and Linux
 - [ ] More agents: Gemini CLI, Copilot CLI
-- [ ] Cursor app chats back to Claude
 - [ ] Optional cleanup command for test conversations
 
 ## 🙌 Contributing
