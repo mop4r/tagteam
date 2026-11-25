@@ -34,7 +34,7 @@ import time
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, AQUI)
-import antigravity  # noqa: E402
+import antigravity_db as antigravity  # noqa: E402
 import claude_jsonl  # noqa: E402
 import grok  # noqa: E402
 import para_claude  # noqa: E402

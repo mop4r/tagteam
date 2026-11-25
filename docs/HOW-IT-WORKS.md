@@ -16,7 +16,7 @@ each AI syncs with Claude, and whatever just arrived from one side is relayed to
 |---|---|
 | `scripts/claude_jsonl.py` | reads Claude JSONL into a neutral `Conversa` (turns, title, cwd, timestamps) |
 | `scripts/para_claude.py` | writes a Claude session from Gemini/Grok (`entrypoint` marker, "[Antigravity]"/"[Grok]" title) |
-| `scripts/antigravity.py` + `pb.py` | reads/writes Antigravity's SQLite + protobuf conversations (lossless protobuf editor) |
+| `scripts/antigravity_db.py` + `pb.py` | reads/writes Antigravity's SQLite + protobuf conversations (lossless protobuf editor) |
 | `scripts/servidor_local.py` | talks to Antigravity's local language server (load, rename, delete conversations live) |
 | `scripts/grok.py` | reads/writes Grok sessions (`updates.jsonl`, `chat_history.jsonl`, `summary.json`) |
 | `scripts/sincronizar.py` | the engine: every direction, versions, mirrors, relay, per-PC state |

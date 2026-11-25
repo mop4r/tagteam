@@ -12,7 +12,7 @@ import urllib.parse
 import uuid
 from datetime import datetime, timezone
 
-import antigravity
+import antigravity_db as antigravity
 import pb
 from claude_jsonl import Conversa, Turno, MAX_DESCRICAO_FERRAMENTA, _cortar
 

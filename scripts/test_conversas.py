@@ -6,7 +6,7 @@ import unittest
 from datetime import datetime, timezone
 from unittest import mock
 
-import antigravity
+import antigravity_db as antigravity
 import claude_jsonl
 import pb
 
@@ -444,6 +444,17 @@ class TestApagarTiraDoCache(unittest.TestCase):
         antigravity.apagar_com_app_fechado(CASCADE_M, base=pasta)
         with open(caminho, "rb") as f:
             self.assertEqual(f.read(), b"\xff\xff\xff")
+
+
+class TestNenhumModuloComNomeDaBibliotecaPadrao(unittest.TestCase):
+    def test_nenhum_script_da_pasta_tem_nome_de_modulo_padrao(self):
+        # um script local com nome de modulo padrao (ex.: antigravity.py) so e achado quando a pasta esta no
+        # sys.path; com python -I ou "python -m unittest scripts/x.py" o import pega o da biblioteca padrao
+        # (o antigravity padrao abre a xkcd 353 no navegador)
+        import sys
+        pasta = os.path.dirname(os.path.abspath(__file__))
+        nomes = {os.path.splitext(n)[0] for n in os.listdir(pasta) if n.endswith(".py")}
+        self.assertEqual(sorted(nomes & set(sys.stdlib_module_names)), [])
 
 
 if __name__ == "__main__":
