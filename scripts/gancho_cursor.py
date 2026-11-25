@@ -16,6 +16,22 @@ import gancho  # noqa: E402
 ID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 
+def _anotar(evento, conversa):
+    """Ultimos eventos recebidos (so o nome e o id), para saber se o Cursor chamou o hook. Arquivo pequeno, rotativo."""
+    try:
+        os.makedirs(gancho.PASTA, exist_ok=True)
+        caminho = os.path.join(gancho.PASTA, "gancho-cursor.log")
+        linhas = []
+        if os.path.exists(caminho) and os.path.getsize(caminho) < 64 * 1024:
+            with open(caminho, encoding="utf-8") as f:
+                linhas = f.read().splitlines()[-200:]
+        linhas.append(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {evento[:30]} {conversa[:40] if ID_RE.match(conversa) else '?'}")
+        with open(caminho, "w", encoding="utf-8") as f:
+            f.write("\n".join(linhas) + "\n")
+    except OSError:
+        pass
+
+
 def main():
     try:
         entrada = json.loads(sys.stdin.buffer.read(gancho.MAX_ENTRADA).decode("utf-8-sig") or "{}")
@@ -25,6 +41,7 @@ def main():
         return 0
     evento = str(entrada.get("hook_event_name", "")).lower()
     conversa = str(entrada.get("conversation_id") or entrada.get("session_id") or "")
+    _anotar(evento, conversa)
     if not ID_RE.match(conversa):
         return 0
     args = ["--direcao", "claude-de-cursor", "--cursor", conversa]

@@ -2,6 +2,7 @@ import json
 import os
 import sqlite3
 import tempfile
+import time
 import unittest
 from datetime import datetime, timezone
 from unittest import mock
@@ -9,6 +10,7 @@ from unittest import mock
 import antigravity_db as antigravity
 import claude_jsonl
 import pb
+import sincronizar
 
 CASCADE_M = "11111111-1111-4111-8111-111111111111"
 TRAJ_M = "22222222-2222-4222-8222-222222222222"
@@ -309,6 +311,11 @@ class TestParaClaude(unittest.TestCase):
         self.assertEqual([(t.papel, t.texto) for t in volta.turnos], [(t.papel, t.texto) for t in self.conv.turnos])
         estado = {"exportadas": {self.cascade: {"sessao": sessao, "versao": 0, "passos": 4, "turnos": 4}}}
         self.assertTrue(sincronizar._espelho_do_antigravity(volta, sessao, estado))
+        # espelho so para a base de onde veio: a outra (app <-> CLI) recebe
+        self.assertTrue(sincronizar._espelho_na_base(volta, sessao, estado, self.pasta))
+        outra = os.path.join(self.pasta, "outra-base")
+        os.makedirs(os.path.join(outra, "conversations"))
+        self.assertFalse(sincronizar._espelho_na_base(volta, sessao, estado, outra))
         volta.turnos.append(claude_jsonl.Turno("usuario", "continuei no Claude", volta.turnos[-1].quando))
         self.assertFalse(sincronizar._espelho_do_antigravity(volta, sessao, estado))
         self.assertFalse(sincronizar._espelho_do_antigravity(volta, sessao, {"exportadas": {}}))
@@ -470,3 +477,42 @@ class TestNenhumModuloComNomeDaBibliotecaPadrao(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class TestTrava(unittest.TestCase):
+    """Rodada que chega com outra em andamento espera a vez (antes desistia e a atualizacao se perdia)."""
+
+    def setUp(self):
+        import threading
+        self.threading = threading
+        self.pasta = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, self.pasta, True)
+        for nome, valor in (("PASTA_ESTADO", self.pasta), ("TRAVA", os.path.join(self.pasta, ".trava"))):
+            p = mock.patch.object(sincronizar, nome, valor)
+            p.start()
+            self.addCleanup(p.stop)
+
+    def test_espera_a_outra_terminar_e_pega_a_trava(self):
+        self.assertTrue(sincronizar.pegar_trava())
+        soltar = self.threading.Timer(0.3, lambda: os.remove(sincronizar.TRAVA))
+        soltar.start()
+        self.addCleanup(soltar.cancel)
+        self.assertTrue(sincronizar.esperar_trava(["--sessao", "x"], prazo_s=5, pausa_s=0.05))
+        self.assertEqual([n for n in os.listdir(self.pasta) if n.startswith(".fila")], [])   # fila limpa
+
+    def test_so_uma_igual_espera_e_prazo_acaba(self):
+        self.assertTrue(sincronizar.pegar_trava())
+        fila = os.path.join(self.pasta, ".fila-x")
+        resultado = {}
+        t = self.threading.Thread(target=lambda: resultado.setdefault(
+            "a", sincronizar.esperar_trava(["--sessao", "x"], prazo_s=0.6, pausa_s=0.05)))
+        t.start()
+        time.sleep(0.15)
+        self.assertFalse(sincronizar.esperar_trava(["--sessao", "x"], prazo_s=5, pausa_s=0.05))   # ja tem uma igual
+        t.join()
+        self.assertFalse(resultado["a"])                                                           # prazo acabou
+        self.assertFalse(os.path.exists(fila))
+
+    def test_atraso_nao_conta_para_a_fila(self):
+        self.assertEqual(sincronizar._argumentos_da_fila(["--atraso", "125", "--sessao", "x"]), ["--sessao", "x"])
+        self.assertEqual(sincronizar._argumentos_da_fila(["--atraso=9", "--forcar"]), ["--forcar"])
+

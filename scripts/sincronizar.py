@@ -29,6 +29,7 @@ Estado de cada PC em ~/.tagteam/estado-<PC>.json (TAGTEAM_STATE_DIR troca a past
 """
 import argparse
 import glob
+import hashlib
 import json
 import os
 import re
@@ -52,6 +53,7 @@ WORKSPACE = os.environ.get("TAGTEAM_WORKSPACE") or os.path.expanduser("~")
 ID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 TRAVA_VELHA_S = 30 * 60
 ESPERA_S = 10
+ESPERA_TRAVA_S = 20 * 60
 ETIQUETA = "claude"
 PC = re.sub(r"[^A-Za-z0-9_-]", "_", os.environ.get("COMPUTERNAME", "pc"))[:40]
 PASTA_ESTADO = os.environ.get("TAGTEAM_STATE_DIR") or os.path.join(os.path.expanduser("~"), ".tagteam")
@@ -149,6 +151,44 @@ def pegar_trava():
         return False
 
 
+def esperar_trava(argumentos, prazo_s=None, pausa_s=2.0):
+    """A trava esta com outra rodada: espera por ela em vez de desistir (desistir perdia a atualizacao que chegou no
+    meio de uma rodada completa). So uma rodada espera por combinacao de argumentos: as outras iguais saem, porque a que
+    espera vai rodar depois e ler tudo ja atualizado. True quando pegou a trava; False se ja havia uma igual esperando
+    ou o prazo acabou."""
+    prazo_s = ESPERA_TRAVA_S if prazo_s is None else prazo_s
+    chave = hashlib.sha256(" ".join(argumentos).encode()).hexdigest()[:16]
+    fila = os.path.join(PASTA_ESTADO, f".fila-{PC}-{chave}")
+    try:
+        if os.path.exists(fila) and time.time() - os.path.getmtime(fila) > TRAVA_VELHA_S:
+            os.remove(fila)
+        os.close(os.open(fila, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+    except FileExistsError:
+        return False
+    try:
+        limite = time.monotonic() + prazo_s
+        while time.monotonic() < limite:
+            time.sleep(pausa_s)
+            if pegar_trava():
+                return True
+        return False
+    finally:
+        os.remove(fila)
+
+
+def _argumentos_da_fila(argv):
+    """Os argumentos que dizem o que a rodada faz (sem o --atraso)."""
+    saida, pular = [], False
+    for x in argv:
+        if pular:
+            pular = False
+        elif x == "--atraso":
+            pular = True
+        elif not x.startswith("--atraso="):
+            saida.append(x)
+    return saida
+
+
 def _renovar_trava():
     """Rodada longa (1a importacao para o Codex num PC) nao deixa a trava parecer abandonada."""
     if os.path.exists(TRAVA):
@@ -211,6 +251,16 @@ def _espelho_do_antigravity(conv, sessao, estado):
     return _espelho(conv, sessao, estado, "antigravity")
 
 
+def _espelho_na_base(conv, sessao, estado, base):
+    """Espelho do Antigravity so para a base de onde a conversa veio. App e CLI sao destinos diferentes: a conversa
+    nascida no CLI tem de ir para o app (o app nao lista as do CLI), e a do app vai para o CLI (que lista as do app
+    mas so abre as da pasta dele)."""
+    if not _espelho(conv, sessao, estado, "antigravity"):
+        return False
+    origem = next((c for c, r in estado["exportadas"].items() if r["sessao"] == sessao), None)
+    return origem is not None and os.path.exists(os.path.join(base, "conversations", origem + ".db"))
+
+
 def _fora_do_filtro(a, sessao):
     """Filtro de sessao do Claude: --sessao, ou o conjunto que acabou de ser exportado (propagacao)."""
     if a.so is not None:
@@ -264,7 +314,7 @@ def _para_um_alvo(a, imp, estado, cont, base, alvo, molde, servidor):
             if conv.entrypoint.startswith("sdk"):
                 cont["c>a automaticas"] += 1
                 continue
-            if _espelho(conv, sessao, estado, "antigravity"):
+            if _espelho_na_base(conv, sessao, estado, base):
                 cont["c>a espelhos"] += 1
                 continue
             if not any(t.papel == "usuario" for t in conv.turnos):
@@ -871,8 +921,9 @@ def main():
         print("nem Antigravity, nem Grok, nem Codex, nem Cursor instalados neste PC; nada a fazer")
         return 0
     if not a.seco and not pegar_trava():
-        print("outra sincronizacao esta rodando; saindo")
-        return 0
+        if not esperar_trava(_argumentos_da_fila(sys.argv[1:])):
+            print("outra sincronizacao igual ja esta esperando a vez (ou o prazo acabou); saindo")
+            return 0
     from collections import Counter
     cont = Counter()
     srv = _CodexPreguicoso()
