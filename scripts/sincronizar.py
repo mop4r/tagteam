@@ -1,15 +1,19 @@
-"""Sincroniza conversas entre Claude Code, Antigravity (app e CLI agy) e Grok CLI. O Claude e o centro:
-cada conversa vira sessao do Claude e dali vai para as outras duas (levar as sessoes do Claude aos outros PCs fica com a sincronizacao de pastas que voce usar).
+"""Sincroniza conversas entre Claude Code, Antigravity (app e CLI agy), Grok CLI e Codex (app e CLI). O Claude e o
+centro: cada conversa vira sessao do Claude e dali vai para as outras tres (levar as sessoes do Claude aos outros PCs
+fica com a sincronizacao de pastas que voce usar).
 
 Uso:
   python -I sincronizar.py                            # tudo, em todas as direcoes
   python -I sincronizar.py --direcao antigravity      # so Claude -> Antigravity
   python -I sincronizar.py --direcao claude           # so Antigravity -> Claude (e segue para o Grok)
   python -I sincronizar.py --direcao grok             # so Claude -> Grok
-  python -I sincronizar.py --direcao claude-de-grok   # so Grok -> Claude (e segue para o Antigravity)
+  python -I sincronizar.py --direcao claude-de-grok   # so Grok -> Claude (e segue para as outras)
+  python -I sincronizar.py --direcao codex            # so Claude -> Codex
+  python -I sincronizar.py --direcao claude-de-codex  # so Codex -> Claude (e segue para as outras)
   python -I sincronizar.py --sessao <id>              # uma sessao do Claude (para Antigravity e Grok)
   python -I sincronizar.py --cascade <id>             # uma conversa do Antigravity
   python -I sincronizar.py --grok <id>                # uma sessao do Grok
+  python -I sincronizar.py --codex <id>               # uma conversa do Codex
   python -I sincronizar.py --seco                     # mostra o que faria
 
 Regras (as mesmas nos dois sentidos):
@@ -36,6 +40,7 @@ AQUI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, AQUI)
 import antigravity_db as antigravity  # noqa: E402
 import claude_jsonl  # noqa: E402
+import codex  # noqa: E402
 import grok  # noqa: E402
 import para_claude  # noqa: E402
 import servidor_local  # noqa: E402
@@ -51,6 +56,9 @@ PC = re.sub(r"[^A-Za-z0-9_-]", "_", os.environ.get("COMPUTERNAME", "pc"))[:40]
 PASTA_ESTADO = os.environ.get("TAGTEAM_STATE_DIR") or os.path.join(os.path.expanduser("~"), ".tagteam")
 ESTADO = os.path.join(PASTA_ESTADO, f"estado-{PC}.json")
 TRAVA = os.path.join(PASTA_ESTADO, f".trava-{PC}")
+# "home" so do app-server filho: copias enxutas das sessoes do Claude com a pasta deste PC (codex.preparar)
+PREPARO = os.path.join(PASTA_ESTADO, f"codex-preparo-{PC}")
+CHAVE_EXPORTADAS = {"antigravity": "exportadas", "grok": "exportadas_grok", "codex": "exportadas_codex"}
 
 
 # ---------------------------------------------------------------- estado e trava
@@ -58,13 +66,13 @@ def _entrada_valida(v, chave_id):
     return isinstance(v, dict) and ID_RE.match(str(v.get(chave_id, ""))) and isinstance(v.get("versao"), int)
 
 
-def ler_estado():
-    try:
-        with open(ESTADO, encoding="utf-8") as f:
-            d = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        d = {}
-    d = d if isinstance(d, dict) else {}
+def _filtrar(d, chave, valido):
+    """Entradas validas de d[chave] (estado de outra versao, ou editado a mao, nao derruba a rodada)."""
+    bruto = d.get(chave)
+    return {k: v for k, v in bruto.items() if valido(k, v)} if isinstance(bruto, dict) else {}
+
+
+def _importadas_antigravity(d):
     bruto = d.get("importadas") if isinstance(d.get("importadas"), dict) else {}
     if any(isinstance(v, str) or (isinstance(v, dict) and "cascade" in v) for v in bruto.values()):
         bruto = {"antigravity": bruto}              # formato antigo: so o app, sem separar por pasta
@@ -78,15 +86,27 @@ def ler_estado():
                 v = {"cascade": v, "versao": 0}
             if _entrada_valida(v, "cascade"):
                 imp[alvo][sessao] = v
-    exp = d.get("exportadas") if isinstance(d.get("exportadas"), dict) else {}
-    for cascade, v in list(exp.items()):
-        if not (_entrada_valida(v, "sessao") and isinstance(v.get("passos"), int) and isinstance(v.get("turnos"), int)):
-            del exp[cascade]
-    imp_g = {s: v for s, v in (d.get("importadas_grok") or {}).items()
-             if _entrada_valida(v, "id") and isinstance(v.get("pasta"), str)} if isinstance(d.get("importadas_grok"), dict) else {}
-    exp_g = {g: v for g, v in (d.get("exportadas_grok") or {}).items()
-             if _entrada_valida(v, "sessao") and isinstance(v.get("turnos"), int)} if isinstance(d.get("exportadas_grok"), dict) else {}
-    return {"importadas": imp, "exportadas": exp, "importadas_grok": imp_g, "exportadas_grok": exp_g}
+    return imp
+
+
+def ler_estado():
+    try:
+        with open(ESTADO, encoding="utf-8") as f:
+            d = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        d = {}
+    d = d if isinstance(d, dict) else {}
+    com_turnos = lambda _k, v: _entrada_valida(v, "sessao") and isinstance(v.get("turnos"), int)  # noqa: E731
+    return {
+        "importadas": _importadas_antigravity(d),
+        "exportadas": _filtrar(d, "exportadas", lambda k, v: com_turnos(k, v) and isinstance(v.get("passos"), int)),
+        "importadas_grok": _filtrar(d, "importadas_grok",
+                                    lambda _k, v: _entrada_valida(v, "id") and isinstance(v.get("pasta"), str)),
+        "exportadas_grok": _filtrar(d, "exportadas_grok", com_turnos),
+        "importadas_codex": _filtrar(d, "importadas_codex", lambda _k, v: _entrada_valida(v, "id")),
+        "exportadas_codex": _filtrar(d, "exportadas_codex", com_turnos),
+        "vistas_codex": _filtrar(d, "vistas_codex", lambda k, v: ID_RE.match(str(k)) and isinstance(v, (int, float, str))),
+    }
 
 
 def cwd_local(cwd):
@@ -121,6 +141,12 @@ def pegar_trava():
         return True
     except FileExistsError:
         return False
+
+
+def _renovar_trava():
+    """Rodada longa (1a importacao para o Codex num PC) nao deixa a trava parecer abandonada."""
+    if os.path.exists(TRAVA):
+        os.utime(TRAVA)
 
 
 def _esperar(condicao, motivo, segundos=ESPERA_S):
@@ -170,7 +196,7 @@ def _espelho(conv, sessao, estado, origem):
     """Sessao que este PC gerou a partir de <origem> e que ninguem continuou no Claude: nao volta para la."""
     if conv.entrypoint != para_claude.ORIGENS[origem][0]:
         return False
-    chave = "exportadas" if origem == "antigravity" else "exportadas_grok"
+    chave = CHAVE_EXPORTADAS[origem]
     rec = next((r for r in estado[chave].values() if r["sessao"] == sessao), None)
     return rec is not None and len(conv.turnos) <= rec["turnos"]
 
@@ -183,7 +209,7 @@ def _fora_do_filtro(a, sessao):
     """Filtro de sessao do Claude: --sessao, ou o conjunto que acabou de ser exportado (propagacao)."""
     if a.so is not None:
         return sessao not in a.so
-    return bool((a.sessao and sessao != a.sessao) or a.cascade or a.grok)
+    return bool((a.sessao and sessao != a.sessao) or a.cascade or a.grok or a.codex)
 
 
 def para_antigravity(a, estado, cont):
@@ -276,7 +302,7 @@ def exportar(conv, cascade, total, rec, versao_cc, forcar):
 def para_claude_(a, estado, cont, novas):
     versao_cc = None
     for base, cascade in _conversas_antigravity():
-        if (a.cascade and cascade != a.cascade) or a.sessao or a.grok:
+        if (a.cascade and cascade != a.cascade) or a.sessao or a.grok or a.codex:
             continue
         try:
             sit = antigravity.situacao(cascade, base)
@@ -369,7 +395,7 @@ def para_grok(a, estado, cont):
 def grok_para_claude(a, estado, cont, novas):
     versao_cc = None
     for pasta, sid in grok.sessoes():
-        if (a.grok and sid != a.grok) or a.sessao or a.cascade:
+        if (a.grok and sid != a.grok) or a.sessao or a.cascade or a.codex:
             continue
         try:
             m = grok.marca(pasta)
@@ -415,33 +441,288 @@ def grok_para_claude(a, estado, cont, novas):
             print(f"erro na sessao {sid} (grok -> claude): {type(e).__name__}: {e}", file=sys.stderr)
 
 
+# ---------------------------------------------------------------- Claude -> Codex
+def _limpar_preparo():
+    """As copias so existem durante a importacao (o Codex guarda a conversa dele; a fonte so e lida na hora)."""
+    for raiz, _, arquivos in os.walk(PREPARO, topdown=False):
+        for nome in arquivos:
+            if nome.endswith((".jsonl", ".novo")):
+                os.remove(os.path.join(raiz, nome))
+        if raiz != PREPARO and not os.listdir(raiz):
+            os.rmdir(raiz)
+
+
+def para_codex(a, estado, cont, srv):
+    """Pela importacao nativa do Codex. Continuada no Codex nunca recebe a atualizacao: a entrada do registro e
+    esquecida e a fonte entra como conversa nova (versao nova); a continuada fica, e vai para o Claude como [Codex]."""
+    ctx = {"regs": codex.registros(), "vivas": None}
+    ctx["por_nome"] = {os.path.basename(p).lower(): (p, tid) for p, tid in ctx["regs"].items()}
+    pendentes = []
+    try:
+        for caminho in glob.glob(os.path.join(PROJETOS, "*", "*.jsonl")):
+            sessao = os.path.basename(caminho)[:-6]
+            if not ID_RE.match(sessao) or _fora_do_filtro(a, sessao):
+                continue
+            try:
+                item = _preparar_para_codex(a, estado, cont, srv, ctx, caminho, sessao)
+                if item:
+                    pendentes.append(item)
+            except (OSError, ValueError, codex.ErroCodex) as e:
+                cont["erro"] += 1
+                print(f"erro na sessao {sessao} (codex): {type(e).__name__}: {e}", file=sys.stderr)
+        if pendentes:
+            _importar_pendentes(estado, cont, srv, pendentes)
+    finally:
+        _limpar_preparo()
+
+
+def _sessao_para_codex(a, estado, cont, caminho, sessao):
+    """A conversa do Claude que deve ir para o Codex nesta rodada (marca, conversa), ou None (contada)."""
+    st = os.stat(caminho)
+    marca = (st.st_size, round(st.st_mtime, 3))
+    anterior = estado["importadas_codex"].get(sessao)
+    if anterior and (anterior.get("fonte_tamanho"), anterior.get("fonte_mtime")) == marca and not a.forcar:
+        cont["c>x iguais"] += 1
+        return None
+    conv = claude_jsonl.ler_conversa(caminho, sessao)
+    motivo = ("automaticas" if conv.entrypoint.startswith("sdk") else
+              "espelhos" if _espelho(conv, sessao, estado, "codex") else
+              "vazias" if not any(t.papel == "usuario" for t in conv.turnos) else None)
+    if motivo:
+        cont["c>x " + motivo] += 1
+        return None
+    return marca, conv
+
+
+def _conversa_existente(estado, ctx, sessao, prep):
+    """(id da conversa que ja existe no Codex para a sessao, caminho do registro antigo a adotar ou None)."""
+    existente = (estado["importadas_codex"].get(sessao) or {}).get("id")
+    if existente:
+        return existente, None
+    existente = ctx["regs"].get(codex.normalizar(prep))          # estado perdido neste PC
+    if existente:
+        return existente, None
+    antigo = ctx["por_nome"].get((sessao + ".jsonl").lower())    # importada antes por outro caminho
+    return (antigo[1], antigo[0]) if antigo else (None, None)
+
+
+def _versao_nova_no_codex(a, srv, ctx, existente):
+    """A conversa que ja existe no Codex pede versao nova? True: continuada la (ou apagada, com --forcar);
+    False: atualiza a mesma; None: apagada no Codex, nao volta."""
+    ctx["vivas"] = codex.listar(srv) if ctx["vivas"] is None else ctx["vivas"]
+    if existente not in ctx["vivas"]:
+        return True if a.forcar else None
+    return bool(codex.turnos_nativos(codex.ler(srv, existente)))
+
+
+def _preparar_para_codex(a, estado, cont, srv, ctx, caminho, sessao):
+    achado = _sessao_para_codex(a, estado, cont, caminho, sessao)
+    if not achado:
+        return None
+    marca, conv = achado
+    anterior = estado["importadas_codex"].get(sessao) or {}
+    cwd = cwd_local(conv.cwd)
+    prep = codex.caminho_preparado(sessao, cwd, PREPARO)
+    existente, registro_antigo = _conversa_existente(estado, ctx, sessao, prep)
+    versao_nova = _versao_nova_no_codex(a, srv, ctx, existente) if existente else False
+    if versao_nova is None:
+        cont["c>x apagadas_no_codex"] += 1
+        return None
+    rotulo = "c>x versoes_novas" if versao_nova else ("c>x atualizadas" if existente else "c>x criadas")
+    if a.seco:
+        print(f"{rotulo}: {conv.titulo} ({len(conv.turnos)} turnos)")
+        cont[rotulo] += 1
+        return None
+    codex.preparar(caminho, sessao, cwd, PREPARO)
+    if versao_nova:
+        codex.esquecer_registro(prep)
+    elif registro_antigo:
+        codex.adotar_registro(prep, sessao)
+    # a conversa antiga (continuada no Codex) continua ligada a esta sessao: o titulo dela vem daqui
+    anteriores = list(anterior.get("anteriores") or []) + ([existente] if versao_nova else [])
+    return {"sessao": sessao, "prep": prep, "cwd": cwd, "titulo": conv.titulo, "marca": marca, "rotulo": rotulo,
+            "versao": anterior.get("versao", 0) + (1 if versao_nova else 0), "anteriores": anteriores}
+
+
+def _importar_pendentes(estado, cont, srv, pendentes):
+    feitos, falhas = codex.importar(srv, [(p["prep"], p["cwd"], p["titulo"]) for p in pendentes],
+                                    a_cada_lote=_renovar_trava)
+    regs = codex.registros()
+    for p in pendentes:
+        k = codex.normalizar(p["prep"])
+        if k in falhas:
+            cont["erro"] += 1
+            print(f"erro na sessao {p['sessao']} (codex): {falhas[k]}", file=sys.stderr)
+            continue
+        tid = feitos.get(k) or regs.get(k)        # fonte igual a importada: sem aviso, mas o registro diz qual
+        if not tid or not ID_RE.match(tid):
+            cont["c>x recusadas_pelo_codex"] += 1
+            print(f"o Codex nao importou a sessao {p['sessao']} ({p['titulo']})", file=sys.stderr)
+            continue
+        rec = {"id": tid, "versao": p["versao"], "fonte_tamanho": p["marca"][0], "fonte_mtime": p["marca"][1]}
+        anteriores = [x for x in p["anteriores"] if isinstance(x, str) and ID_RE.match(x)][-50:]
+        if anteriores:
+            rec["anteriores"] = anteriores
+        estado["importadas_codex"][p["sessao"]] = rec
+        cont[p["rotulo"] if k in feitos else "c>x iguais"] += 1
+    gravar_estado(estado)
+
+
+# ---------------------------------------------------------------- Codex -> Claude
+def _origens_codex(estado):
+    """{id de conversa do Codex: sessao do Claude de onde ela foi importada}, incluindo as versoes antigas."""
+    origem = {}
+    for s, v in estado["importadas_codex"].items():
+        for x in [*(v.get("anteriores") or []), v["id"]]:
+            origem[x] = s
+    return origem
+
+
+def _devolver_titulo(a, srv, th, sessao):
+    """O Codex apaga o nome da importada quando ela e continuada: volta o titulo da sessao de origem."""
+    fonte = para_claude.achar_sessao(sessao) if sessao else None
+    if th.get("name") or not codex.importada(th) or not fonte:
+        return
+    th["name"] = claude_jsonl.ler_conversa(fonte, sessao).titulo
+    if not a.seco:
+        srv.chamar("thread/name/set", {"threadId": th["id"], "name": th["name"]})
+
+
+def _versao_no_claude(rec):
+    """Versao da sessao do Claude: a gravada antes, ou a seguinte se ela foi continuada no Claude."""
+    if not rec:
+        return 0
+    caminho = para_claude.achar_sessao(rec["sessao"])
+    continuada = caminho is not None and len(claude_jsonl.ler_conversa(caminho, rec["sessao"]).turnos) > rec["turnos"]
+    return rec["versao"] + 1 if continuada else rec["versao"]
+
+
+def codex_para_claude(a, estado, cont, novas, srv):
+    origem = _origens_codex(estado)
+    ctx = {"a": a, "estado": estado, "cont": cont, "srv": srv, "versao_cc": None}
+    for tid, resumo in codex.listar(srv).items():
+        if not ID_RE.match(tid) or (a.codex and tid != a.codex) or a.sessao or a.cascade or a.grok:
+            continue
+        try:
+            sessao = _codex_para_claude_uma(ctx, tid, resumo.get("updatedAt"), origem.get(tid))
+            if sessao:
+                novas.add(sessao)
+        except (OSError, ValueError, codex.ErroCodex) as e:
+            cont["erro"] += 1
+            print(f"erro na conversa {tid} (codex -> claude): {type(e).__name__}: {e}", file=sys.stderr)
+    if not a.seco:
+        gravar_estado(estado)
+
+
+def _pular_codex(ctx, tid, atual, rec, th, assin):
+    """Motivo para nao levar a conversa ao Claude (contado em x>c <motivo>), ou None."""
+    a, vistas = ctx["a"], ctx["estado"]["vistas_codex"]
+    if codex.importada(th) and not codex.turnos_nativos(th):
+        vistas[tid] = atual                        # veio do Claude e ninguem continuou no Codex
+        return "espelhos"
+    if rec and rec.get("assinatura") == assin and not a.forcar:
+        rec["atualizado"] = atual
+        return "iguais"
+    if rec and para_claude.achar_sessao(rec["sessao"]) is None and not a.forcar:
+        return "apagadas_no_claude"
+    return None
+
+
+def _codex_para_claude_uma(ctx, tid, atual, sessao_origem):
+    """Leva uma conversa do Codex para o Claude; devolve a sessao gravada ou None (contada)."""
+    a, estado, cont, srv = ctx["a"], ctx["estado"], ctx["cont"], ctx["srv"]
+    exp, vistas = estado["exportadas_codex"], estado["vistas_codex"]
+    rec = exp.get(tid)
+    if not a.forcar and atual is not None and ((rec and rec.get("atualizado") == atual) or vistas.get(tid) == atual):
+        cont["x>c iguais"] += 1
+        return None
+    th = codex.ler(srv, tid)
+    if codex.importada(th) and codex.turnos_nativos(th):
+        _devolver_titulo(a, srv, th, sessao_origem)
+    assin = f"{codex.assinatura(th)}|{th.get('name') or ''}"
+    motivo = _pular_codex(ctx, tid, atual, rec, th, assin)
+    conv = None if motivo else codex.conversa_de_thread(th)
+    if conv is not None and not any(t.papel == "usuario" for t in conv.turnos):
+        vistas[tid] = atual
+        motivo = "vazias"
+    if motivo:
+        cont["x>c " + motivo] += 1
+        return None
+    rotulo = "x>c atualizadas" if rec else "x>c criadas"
+    cont[rotulo] += 1
+    if a.seco:
+        print(f"{rotulo}: {conv.titulo} ({len(conv.turnos)} turnos)")
+        return None
+    versao = _versao_no_claude(rec)
+    sessao = para_claude.id_sessao(tid, versao, "codex")
+    cwd = cwd_local(conv.cwd)
+    ctx["versao_cc"] = ctx["versao_cc"] or para_claude.versao_claude()
+    para_claude.gravar_sessao(conv, sessao, para_claude.pasta_do_projeto(cwd), cwd, ctx["versao_cc"], "codex")
+    exp[tid] = {"sessao": sessao, "versao": versao, "assinatura": assin, "turnos": len(conv.turnos), "atualizado": atual}
+    gravar_estado(estado)
+    return sessao
+
+
 # ---------------------------------------------------------------- main
+class _CodexPreguicoso:
+    """Um app-server do Codex por rodada, aberto so se alguma direcao precisar e sempre encerrado no fim."""
+
+    def __init__(self):
+        self.srv = None
+
+    def __call__(self):
+        if self.srv is None:
+            os.makedirs(PREPARO, exist_ok=True)
+            # a importacao procura as sessoes em <home>/.claude/projects: a home do filho e a area de preparo
+            self.srv = codex.Servidor(env_extra={"USERPROFILE": PREPARO, "HOME": PREPARO}).__enter__()
+        return self.srv
+
+    def fechar(self):
+        if self.srv is not None:
+            self.srv.fechar()
+            self.srv = None
+
+
+def _codex(a, estado, cont, srv, fn, *args):
+    """Direcao do Codex: falha do app-server (nao instalado, sem resposta) vira erro contado, nunca derruba a rodada."""
+    if not codex.instalado():
+        return
+    try:
+        fn(a, estado, cont, *args, srv())
+    except codex.ErroCodex as e:
+        cont["erro"] += 1
+        print(f"codex: {e}", file=sys.stderr)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--direcao", choices=("ambas", "antigravity", "claude", "grok", "claude-de-grok"), default="ambas")
+    ap.add_argument("--direcao", choices=("ambas", "antigravity", "claude", "grok", "claude-de-grok", "codex",
+                                          "claude-de-codex"), default="ambas")
     ap.add_argument("--sessao", help="id de uma sessao do Claude")
     ap.add_argument("--cascade", help="id de uma conversa do Antigravity")
     ap.add_argument("--grok", help="id de uma sessao do Grok")
+    ap.add_argument("--codex", help="id de uma conversa do Codex")
     ap.add_argument("--seco", action="store_true", help="so mostra o que faria")
     ap.add_argument("--forcar", action="store_true",
                     help="regrava mesmo sem mudanca e recria a apagada no destino (nunca a continuada)")
     ap.add_argument("--atraso", type=int, default=0, help="segundos de espera antes (deixa outra sincronizacao de pastas terminar)")
     a = ap.parse_args()
     a.so = None
-    for valor in (a.sessao, a.cascade, a.grok):
+    for valor in (a.sessao, a.cascade, a.grok, a.codex):
         if valor and not ID_RE.match(valor):
             sys.exit("id invalido")
     if not 0 <= a.atraso <= 600:
         sys.exit("atraso fora de 0..600")
     time.sleep(a.atraso)
-    if not antigravity.bases() and not grok.instalado():
-        print("nem Antigravity nem Grok instalados neste PC; nada a fazer")
+    if not antigravity.bases() and not grok.instalado() and not codex.instalado():
+        print("nem Antigravity, nem Grok, nem Codex instalados neste PC; nada a fazer")
         return 0
     if not a.seco and not pegar_trava():
         print("outra sincronizacao esta rodando; saindo")
         return 0
     from collections import Counter
     cont = Counter()
+    srv = _CodexPreguicoso()
     try:
         estado = ler_estado()
         d = a.direcao
@@ -449,21 +730,26 @@ def main():
             para_antigravity(a, estado, cont)
         if d in ("ambas", "grok"):
             para_grok(a, estado, cont)
-        de_agy, de_grok = set(), set()
+        if d in ("ambas", "codex"):
+            _codex(a, estado, cont, srv, para_codex)
+        novas = set()
         if d in ("ambas", "claude"):
-            para_claude_(a, estado, cont, de_agy)
+            para_claude_(a, estado, cont, novas)
         if d in ("ambas", "claude-de-grok"):
-            grok_para_claude(a, estado, cont, de_grok)
-        # o que acabou de virar sessao do Claude segue para a terceira IA na mesma rodada
-        if de_agy and not a.seco:
-            a.so = de_agy
-            para_grok(a, estado, cont)
-        if de_grok and not a.seco:
-            a.so = de_grok
+            grok_para_claude(a, estado, cont, novas)
+        if d in ("ambas", "claude-de-codex"):
+            _codex(a, estado, cont, srv, codex_para_claude, novas)
+        # o que acabou de virar sessao do Claude segue para as outras IAs na mesma rodada (a de origem reconhece o
+        # proprio espelho e nao o recebe de volta)
+        if novas and not a.seco:
+            a.so, a.sessao, a.cascade, a.grok, a.codex = novas, None, None, None, None
             para_antigravity(a, estado, cont)
+            para_grok(a, estado, cont)
+            _codex(a, estado, cont, srv, para_codex)
         print(json.dumps(dict(sorted(cont.items())), ensure_ascii=False))
         return 1 if cont["erro"] else 0
     finally:
+        srv.fechar()
         if not a.seco and os.path.exists(TRAVA):
             os.remove(TRAVA)
 

@@ -1,7 +1,7 @@
 # How TagTeam works
 
-TagTeam converts conversations between three native formats and keeps them in step with hooks. Claude Code is the hub:
-each AI syncs with Claude, and whatever just arrived from one side is relayed to the third in the same run.
+TagTeam converts conversations between four native formats and keeps them in step with hooks. Claude Code is the hub:
+each AI syncs with Claude, and whatever just arrived from one side is relayed to the others in the same run.
 
 ```
               ┌──────────── hooks ────────────┐
@@ -19,9 +19,11 @@ each AI syncs with Claude, and whatever just arrived from one side is relayed to
 | `scripts/antigravity_db.py` + `pb.py` | reads/writes Antigravity's SQLite + protobuf conversations (lossless protobuf editor) |
 | `scripts/servidor_local.py` | talks to Antigravity's local language server (load, rename, delete conversations live) |
 | `scripts/grok.py` | reads/writes Grok sessions (`updates.jsonl`, `chat_history.jsonl`, `summary.json`) |
+| `scripts/codex.py` | talks to Codex through its official local API (`codex app-server`): list, read, native import |
 | `scripts/sincronizar.py` | the engine: every direction, versions, mirrors, relay, per-PC state |
 | `scripts/gancho.py` | Claude Code and Grok hook (throttled; synchronous inside Grok) |
 | `scripts/gancho_antigravity.py` | Antigravity `Stop` hook (sync + Gemini quota handoff) |
+| `scripts/gancho_codex.py` | Codex `Stop`/`SessionEnd` hook (`~/.codex/hooks.json`) |
 | `scripts/passagem.py`, `statusline.py` | handoff near the limit (Claude status line usage, Gemini quota API) |
 | `scripts/instalar.py` | environment mirror, hooks, CLIs, shortcuts (idempotent) |
 | `scripts/agy_resume.py`, `grok-resume/` | resume pickers for the `agy` and Grok CLIs |
@@ -69,13 +71,38 @@ each AI syncs with Claude, and whatever just arrived from one side is relayed to
 - `grok sessions list` shows the same list as the resume picker; `grok usage` only works inside the TUI, so there is
   no automatic handoff *from* Grok.
 
+## OpenAI Codex (app and CLI)
+- The app and the CLI share `~/.codex`; one write shows up in both. TagTeam never touches Codex's databases: it starts
+  `codex app-server` (JSON per line over stdio) for each run and kills its process tree at the end.
+- **Claude → Codex** uses Codex's own session importer (`externalAgentConfig/import`, type `SESSIONS`): it creates the
+  conversation with the session title, appends to the **same** conversation when the source changes, does nothing
+  when it didn't, and never brings back a conversation deleted in Codex. Its map (source path → conversation) lives in
+  `~/.codex/external_agent_session_imports.json`.
+- The importer only accepts sessions under `<home>/.claude/projects` whose **working folder exists on this PC**, and it
+  skips the others silently. TagTeam imports a trimmed copy (user/assistant/title lines only) with this PC's folder,
+  from a staging folder that is the `USERPROFILE` of the app-server child; the copy is deleted after the import.
+- **Turns made in Codex have UUID ids**; imported turns have `external-import-turn-N`, and `rollout-N` when an update
+  appends only replies. A conversation with a UUID turn was continued in Codex: when the Claude session also moves on,
+  TagTeam forgets the importer's entry so the new Claude version becomes a separate conversation, and the continued one
+  stays (and goes to Claude as "[Codex] …"). Codex drops the name of an imported conversation once it is continued;
+  TagTeam restores the original title.
+- **Codex → Claude**: `thread/list` (only `cli`, `vscode` = app and `appServer`; never `exec`, sub-agents or ephemeral
+  threads) and `thread/read` with turns. Only conversations whose `updatedAt` changed are read again.
+- Hooks: `~/.codex/hooks.json` (Claude hook format; Codex doesn't read `~/.claude/settings.json`). Codex runs the
+  command through **PowerShell**, so it is `& "python.exe" -I "gancho_codex.py"`; without `&` a quoted path is just a
+  string and nothing runs. Codex only runs **trusted** hooks: `instalar.py` marks TagTeam's own hooks through the
+  official API (`hooks/list` → `config/value/write` on `hooks.state`), never anyone else's.
+- Shortcuts: "Codex" (`--dangerously-bypass-approvals-and-sandbox`) and "Codex --resume" (`codex resume --all`), in
+  Windows Terminal as administrator. A new PC gets the CLI from the official installer
+  (`https://chatgpt.com/codex/install.ps1`, non-interactive); the app stays with you.
+
 ## Versions, mirrors and the relay
 1. Changed at the source → rewritten at the destination (same logical conversation, never duplicated).
 2. Imported and untouched → never sent back (mirror).
 3. Continued at the destination and changed at the source → **new version** next to the continued copy. This is
    exactly what happens when you tag out: every switch becomes a new conversation on the other side.
 4. Deleted at the destination → not recreated (unless `--forcar`).
-5. What one run imports into Claude from Gemini is relayed to Grok in the same run, and vice versa.
+5. What one run imports into Claude from Gemini, Grok or Codex is relayed to the other two in the same run.
 
 ## The handoff
 - Claude: `statusline.py` stores the `rate_limits` Claude Code sends to the status line; at ≥ 95% (5-hour or 7-day

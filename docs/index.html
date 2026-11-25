@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TagTeam — Sync Claude Code, Gemini (Antigravity) &amp; Grok CLI Conversations</title>
-  <meta name="description" content="Keep one coding conversation alive across Claude Code, Google Gemini (Antigravity app and agy CLI), and Grok CLI. Two-way native session sync, shared CLAUDE.md/skills/MCP, and automatic 95% usage-limit handoff.">
+  <title>TagTeam — Sync Claude Code, Gemini (Antigravity), Grok CLI &amp; OpenAI Codex Conversations</title>
+  <meta name="description" content="Keep one coding conversation alive across Claude Code, Google Gemini (Antigravity app and agy CLI), Grok CLI and OpenAI Codex (app and CLI). Two-way native session sync, shared CLAUDE.md/skills/MCP, and automatic 95% usage-limit handoff.">
   <meta name="robots" content="index, follow">
   <meta name="google-site-verification" content="U5uMQXsDR6NnZyRHUvWsYW4ielVy_WCR8aLg48kAmsM">
   <!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity (canonical/hreflang metadata only, not fetched subresources) -->
@@ -19,17 +19,17 @@
 
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="TagTeam">
-  <meta property="og:title" content="TagTeam — One conversation, three AI coding agents">
-  <meta property="og:description" content="Sync Claude Code, Gemini (Antigravity / agy CLI) and Grok CLI sessions both ways with automatic usage-limit handoff notes. Local, zero dependencies, MIT.">
+  <meta property="og:title" content="TagTeam — One conversation, four AI coding agents">
+  <meta property="og:description" content="Sync Claude Code, Gemini (Antigravity / agy CLI), Grok CLI and OpenAI Codex sessions both ways with automatic usage-limit handoff notes. Local, zero dependencies, MIT.">
   <meta property="og:url" content="https://mop4r.github.io/tagteam/">
   <meta property="og:image" content="https://mop4r.github.io/tagteam/assets/og-image.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="TagTeam banner: Claude Code, Gemini Antigravity and Grok CLI sharing one conversation">
+  <meta property="og:image:alt" content="TagTeam banner: Claude Code, Gemini Antigravity, Grok CLI and OpenAI Codex sharing one conversation">
 
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="TagTeam — Sync Claude Code, Gemini (Antigravity) &amp; Grok CLI">
-  <meta name="twitter:description" content="Hit a Claude Code 5-hour usage limit? Tag out and continue the same session in Gemini Antigravity or Grok CLI with automatic handoff.">
+  <meta name="twitter:title" content="TagTeam — Sync Claude Code, Gemini (Antigravity), Grok CLI &amp; Codex">
+  <meta name="twitter:description" content="Hit a Claude Code 5-hour usage limit? Tag out and continue the same session in Gemini Antigravity, Grok CLI or OpenAI Codex with automatic handoff.">
   <meta name="twitter:image" content="https://mop4r.github.io/tagteam/assets/og-image.png">
 
   <link rel="stylesheet" href="styles.css">
@@ -47,7 +47,7 @@
         "license": "https://opensource.org/licenses/MIT",
         "url": "https://mop4r.github.io/tagteam/",
         "codeRepository": "https://github.com/mop4r/tagteam",
-        "description": "Local two-way conversation sync and automatic usage-limit handoff between Claude Code, Google Gemini (Antigravity desktop app and agy CLI), and xAI Grok CLI.",
+        "description": "Local two-way conversation sync and automatic usage-limit handoff between Claude Code, Google Gemini (Antigravity desktop app and agy CLI), xAI Grok CLI, and OpenAI Codex (desktop app and CLI).",
         "offers": {
           "@type": "Offer",
           "price": "0",
@@ -107,7 +107,7 @@
 
   <main class="wrap">
     <section class="hero" style="border-top: none;">
-      <h1>One conversation across Claude Code, Gemini and Grok CLI.</h1>
+      <h1>One conversation across Claude Code, Gemini, Grok CLI and OpenAI Codex.</h1>
       <p class="lead">
         When a 5-hour usage limit hits mid-refactor, switch tools without starting over.
         TagTeam mirrors your real native sessions both ways and writes a five-line handoff note before stopping.
@@ -116,6 +116,7 @@
         <li><span class="dot dot-claude" aria-hidden="true"></span>Claude Code</li>
         <li><span class="dot dot-gemini" aria-hidden="true"></span>Gemini · Antigravity &amp; agy CLI</li>
         <li><span class="dot dot-grok" aria-hidden="true"></span>Grok CLI</li>
+        <li><span class="dot dot-codex" aria-hidden="true"></span>OpenAI Codex · app &amp; CLI</li>
       </ul>
       <div class="actions">
         <a class="btn btn-primary" href="#install">Install on Windows</a>
@@ -130,21 +131,22 @@
     </section>
 
     <section id="install">
-      <h2>Install in three commands</h2>
-      <p>Requires Windows 10/11, Python 3.11+ and Claude Code. The installer sets up hooks, mirrors your environment, and installs the official <code>agy</code> and <code>grok</code> CLIs if missing.</p>
+      <h2>Install in a few commands</h2>
+      <p>Requires Windows 10/11, Python 3.11+ and Claude Code. The installer sets up hooks, mirrors your environment, and installs the official <code>agy</code>, <code>grok</code> and <code>codex</code> CLIs if missing.</p>
       <div class="code-block">
         <button class="copy-btn" type="button" data-copy="install-cmd">Copy</button>
         <pre id="install-cmd">git clone https://github.com/mop4r/tagteam "$HOME\.claude\skills\tagteam"
 python -I "$HOME\.claude\skills\tagteam\scripts\instalar.py"
 agy
-grok</pre>
+grok
+codex</pre>
       </div>
-      <p>Sign in once to <code>agy</code> and <code>grok</code>, then keep working as usual. Every session shows up natively in <code>claude --resume</code>, the Antigravity sidebar, the <code>Agy CLI --resume</code> picker, and <code>Grok --resume</code>.</p>
+      <p>Sign in once to <code>agy</code>, <code>grok</code> and <code>codex</code>, then keep working as usual. Every session shows up natively in <code>claude --resume</code>, the Antigravity sidebar, the <code>Agy CLI --resume</code> picker, <code>Grok --resume</code>, the Codex app and <code>Codex --resume</code>.</p>
 
       <ul class="feature-list">
         <li>
-          <strong>Three-way native sync</strong>
-          <span>Claude JSONL, Antigravity SQLite + protobuf (desktop app and CLI), and Grok ACP JSONL stay in sync through hooks.</span>
+          <strong>Four-way native sync</strong>
+          <span>Claude JSONL, Antigravity SQLite + protobuf (desktop app and CLI), Grok ACP JSONL and OpenAI Codex (through its official local app-server API) stay in sync through hooks.</span>
         </li>
         <li>
           <strong>Automatic 95% limit handoff</strong>
@@ -170,6 +172,7 @@ grok</pre>
               <th>From Claude Code</th>
               <th>Gemini (Antigravity / agy)</th>
               <th>Grok CLI</th>
+              <th>OpenAI Codex</th>
             </tr>
           </thead>
           <tbody>
@@ -177,31 +180,37 @@ grok</pre>
               <td>Conversations</td>
               <td>Both ways (desktop app + CLI)</td>
               <td>Both ways</td>
+              <td>Both ways (app + CLI)</td>
             </tr>
             <tr>
               <td><code>~/.claude/CLAUDE.md</code></td>
               <td>Referenced from generated <code>~/.gemini/GEMINI.md</code></td>
               <td>Loaded natively + <code>~/.grok/AGENTS.md</code></td>
+              <td>Block in <code>~/.codex/AGENTS.md</code></td>
             </tr>
             <tr>
               <td>Skills (<code>~/.claude/skills</code>)</td>
               <td><code>config/skills.json</code></td>
               <td>Native</td>
+              <td>—</td>
             </tr>
             <tr>
               <td>Plugins &amp; MCP servers</td>
               <td><code>config/plugins.json</code> &amp; <code>mcp_config.json</code></td>
               <td>Enabled in <code>config.toml</code></td>
+              <td>—</td>
             </tr>
             <tr>
               <td>Automatic handoff at 95%</td>
               <td>Yes (via local quota API)</td>
               <td>Manual (Grok CLI has no non-TUI usage API yet)</td>
+              <td>Manual</td>
             </tr>
             <tr>
               <td>Interactive resume picker</td>
               <td><code>Agy CLI --resume</code> shortcut</td>
               <td><code>Grok --resume</code> shortcut</td>
+              <td><code>Codex --resume</code> shortcut</td>
             </tr>
           </tbody>
         </table>

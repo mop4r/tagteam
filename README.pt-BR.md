@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/banner.svg" alt="TagTeam — uma conversa, três IAs: Claude Code, Gemini (Antigravity) e Grok CLI" width="100%">
+  <img src="assets/banner.svg" alt="TagTeam — uma conversa, quatro IAs: Claude Code, Gemini (Antigravity), Grok CLI e OpenAI Codex" width="100%">
 </p>
 
-<h1 align="center">TagTeam — Sincronize conversas entre Claude Code, Gemini (Antigravity) e Grok CLI</h1>
+<h1 align="center">TagTeam — Sincronize conversas entre Claude Code, Gemini (Antigravity), Grok CLI e OpenAI Codex</h1>
 
 <p align="center">
   <a href="README.md">English</a> · <b>Português (Brasil)</b> · <a href="https://mop4r.github.io/tagteam/pt-br/">Site do projeto</a>
@@ -23,41 +23,43 @@
 
 ## ✨ Por quê?
 
-Você está no meio de uma refatoração no **Claude Code** e o limite de 5 horas acaba. Abre o **Gemini** (Antigravity)
-ou o **Grok CLI**… e começa do zero, colando contexto e explicando tudo de novo.
+Você está no meio de uma refatoração no **Claude Code** e o limite de 5 horas acaba. Abre o **Gemini** (Antigravity),
+o **Grok CLI** ou o **OpenAI Codex**… e começa do zero, colando contexto e explicando tudo de novo.
 
-**Com o TagTeam as conversas viajam.** Toda sessão do Claude Code aparece no Gemini e no Grok, e toda sessão do Gemini
-ou do Grok aparece no `claude --resume`, sozinhas, nos dois sentidos e com o título certo. Perto do limite, a IA que
+**Com o TagTeam as conversas viajam.** Toda sessão do Claude Code aparece no Gemini, no Grok e no
+Codex, e toda sessão deles aparece no `claude --resume` (e dali nas outras), sozinhas, nos dois sentidos e com o título certo. Perto do limite, a IA que
 vai parar **escreve uma passagem de cinco linhas** para a próxima saber exatamente onde continuar.
 
 ## 🚀 Recursos
 
-- 🔁 **Sincronização entre as três, nos dois sentidos**, por hooks: Claude Code ⇄ Gemini (app **e** CLI `agy`) ⇄ Grok CLI.
-- ▶️ **Resume nativo em todas:** `claude --resume`, a lista do Antigravity, `agy`, `grok --resume`.
+- 🔁 **Sincronização entre as quatro, nos dois sentidos**, por hooks: Claude Code ⇄ Gemini (app **e** CLI `agy`) ⇄ Grok CLI ⇄ OpenAI Codex (app **e** CLI).
+- ▶️ **Resume nativo em todas:** `claude --resume`, a lista do Antigravity, `agy`, `grok --resume`, o app do Codex e `codex resume`.
 - 🤝 **Passagem automática** a 95% do limite do Claude (ou da cota do Gemini).
-- 🧠 **O mesmo cérebro:** Gemini e Grok leem o seu `~/.claude/CLAUDE.md`, as skills, os plugins do Claude e os servidores MCP, por referência.
+- 🧠 **O mesmo cérebro:** Gemini e Grok leem o seu `~/.claude/CLAUDE.md`, as skills, os plugins do Claude e os servidores MCP, por referência; o Codex recebe um bloco no `AGENTS.md` que aponta para as mesmas regras.
 - 🛡️ **Nunca sobrescreve trabalho seu:** conversa continuada do outro lado vira versão nova; espelho não volta.
 - 💻 **Vários PCs:** caminhos de outra máquina são trocados pelos desta; o estado é por PC.
 - 🪶 **Zero dependências** e 🔒 **tudo local**, sem telemetria.
 
 ## ⚡ Começando
 
-> **Requisitos:** Windows 10/11, Python 3.11+, [Claude Code](https://claude.com/claude-code). O app do Antigravity é
-> opcional; o CLI `agy` e o Grok CLI são instalados para você.
+> **Requisitos:** Windows 10/11, Python 3.11+, [Claude Code](https://claude.com/claude-code). Os apps do Antigravity e do
+> Codex são opcionais; o CLI `agy`, o Grok CLI e o CLI do Codex são instalados para você.
 
 ```powershell
 git clone https://github.com/mop4r/tagteam "$HOME\.claude\skills\tagteam"
 python -I "$HOME\.claude\skills\tagteam\scripts\instalar.py"   # pode rodar de novo quando quiser
 agy     # login uma vez
 grok    # login uma vez
+codex   # login uma vez
 ```
 
-Pronto: comece uma conversa em qualquer uma das três e abra outra; ela já está lá.
+Pronto: comece uma conversa em qualquer uma das quatro e abra outra; ela já está lá.
 
 ## 🧩 Como funciona
 
-O Claude Code é o centro: cada IA sincroniza com ele, e o que acabou de chegar do Gemini segue para o Grok na mesma
-rodada (e vice-versa). Os hooks de cada ferramenta chamam o TagTeam depois de cada resposta (no máximo uma vez a cada
+O Claude Code é o centro: cada IA sincroniza com ele, e o que acabou de chegar de uma segue para as outras na mesma
+rodada. O Codex entra pela API local oficial dele (`codex app-server`) e pela importação nativa de sessões; o app e o
+CLI do Codex dividem o `~/.codex`. Os hooks de cada ferramenta chamam o TagTeam depois de cada resposta (no máximo uma vez a cada
 2 minutos por conversa). Cada cópia importada leva uma marca, e cópia que ninguém continuou nunca volta. Detalhes
 (em inglês) em [`docs/HOW-IT-WORKS.md`](docs/HOW-IT-WORKS.md).
 
@@ -81,4 +83,4 @@ pessoas a acharem.
 
 ## 📄 Licença
 
-[MIT](LICENSE). Claude, Gemini, Antigravity e Grok são marcas dos seus donos; o TagTeam é independente.
+[MIT](LICENSE). Claude, Gemini, Antigravity, Grok, OpenAI e Codex são marcas dos seus donos; o TagTeam é independente.

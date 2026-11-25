@@ -251,7 +251,8 @@ class TestEstado(unittest.TestCase):
             with open(sincronizar.ESTADO, "w", encoding="utf-8") as f:
                 f.write("{quebrado")
             self.assertEqual(sincronizar.ler_estado(), {"importadas": {}, "exportadas": {}, "importadas_grok": {},
-                                                        "exportadas_grok": {}})
+                                                        "exportadas_grok": {}, "importadas_codex": {},
+                                                        "exportadas_codex": {}, "vistas_codex": {}})
         finally:
             sincronizar.ESTADO = antigo
 

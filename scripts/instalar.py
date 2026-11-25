@@ -27,6 +27,7 @@ GEMINI = os.path.join(HOME, ".gemini")
 CONFIG = os.path.join(GEMINI, "config")
 CLAUDE = os.path.join(HOME, ".claude")
 AQUI = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, AQUI)   # com python -I a pasta do script nao entra no caminho de import (codex.py)
 SKILL = os.path.dirname(AQUI)
 MODELO_GEMINI = os.path.join(SKILL, "references", "GEMINI.modelo.md")
 MCP_CHAVES = ("command", "args", "env", "cwd", "url", "headers", "disabled")
@@ -311,15 +312,10 @@ def copiar_grok_resume(seco, mudou):
                 shutil.copy2(origem, destino)
 
 
-def criar_atalhos_grok(seco, mudou):
-    """Menu Iniciar: 'Grok' e 'Grok --resume' (seletor de sessoes), no Windows Terminal, como administrador."""
+def gravar_atalhos(comandos, icone, seco, mudou):
+    """Atalhos do Menu Iniciar no Windows Terminal (powershell), como administrador, abrindo na pasta de trabalho."""
     import subprocess
-    if not os.path.isfile(GROK_EXE) or not os.path.isdir(MENU):
-        return
     wt = os.path.join(os.environ.get("LOCALAPPDATA", ""), "Microsoft", "WindowsApps", "wt.exe")
-    comandos = {"Grok.lnk": f"& '{GROK_EXE}' --always-approve",
-                "Grok --resume.lnk": f"& '{os.path.join(GROK, 'grok-resume.exe')}'"}
-    icone = (os.path.join(GROK, "grok.ico") if os.path.isfile(os.path.join(GROK, "grok.ico")) else GROK_EXE) + ",0"
     for nome, comando in comandos.items():
         if os.path.isfile(wt):
             alvo, args = wt, f'-d "{WS}" powershell.exe -NoExit -Command "{comando}"'
@@ -336,6 +332,16 @@ def criar_atalhos_grok(seco, mudou):
             raise RuntimeError(f"atalho {nome}: {r.stderr.strip()[:200]}")
         if "gravado" in r.stdout:
             mudou.append(os.path.join(MENU, nome))
+
+
+def criar_atalhos_grok(seco, mudou):
+    """Menu Iniciar: 'Grok' e 'Grok --resume', no Windows Terminal, como administrador."""
+    if not os.path.isfile(GROK_EXE) or not os.path.isdir(MENU):
+        return
+    comandos = {"Grok.lnk": f"& '{GROK_EXE}' --always-approve",
+                "Grok --resume.lnk": f"& '{os.path.join(GROK, 'grok-resume.exe')}'"}
+    icone = (os.path.join(GROK, "grok.ico") if os.path.isfile(os.path.join(GROK, "grok.ico")) else GROK_EXE) + ",0"
+    gravar_atalhos(comandos, icone, seco, mudou)
 
 
 def _toml_texto(v):
@@ -412,6 +418,137 @@ def instalar_grok_config(seco, mudou):
         gravar(os.path.join(GROK, "config.toml"), config, seco, mudou)
 
 
+# ---------------------------------------------------------------- Codex (app e CLI)
+CODEX_DIR = os.environ.get("CODEX_HOME") or os.path.join(HOME, ".codex")
+URL_INSTALADOR_CODEX = "https://chatgpt.com/codex/install.ps1"
+ICONE_CODEX = os.path.join(AQUI, "codex-icone", "codex.ico")
+MODELO_CODEX = os.path.join(SKILL, "references", "CODEX.modelo.md")
+INICIO_AGENTS = "<!-- >>> skill antigravity (gerado pelo instalar.py a partir de references/CODEX.modelo.md; nao editar dentro do bloco) >>> -->"
+FIM_AGENTS = "<!-- <<< skill antigravity <<< -->"
+GANCHO_CODEX = "gancho_codex.py"
+TIMEOUT_HOOK_CODEX_S = 30
+
+
+def _codex_exe():
+    import codex
+    return codex.executavel()
+
+
+def instalar_codex(seco, mudou):
+    """Codex CLI pelo instalador oficial (ele mesmo confere o SHA-256 do pacote que baixa). O app fica com voce (Microsoft Store)."""
+    if _codex_exe():
+        return
+    mudou.append("codex CLI")
+    if seco:
+        return
+    import subprocess
+    import urllib.request
+    # nosemgrep: dynamic-urllib-use-detected -- URL constante https do instalador oficial, TLS verificado
+    with urllib.request.urlopen(URL_INSTALADOR_CODEX, timeout=TIMEOUT_DOWNLOAD_S) as r:
+        script = r.read(MAX_INSTALADOR + 1)
+    if len(script) > MAX_INSTALADOR or b"releases.openai.com/codex" not in script or b"CODEX_NON_INTERACTIVE" not in script:
+        raise RuntimeError("instalador do Codex veio diferente do esperado; nada foi executado")
+    fd, tmp = tempfile.mkstemp(prefix="codex-install-", suffix=".ps1")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(script)
+        subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", tmp],
+                       check=False, capture_output=True, timeout=TIMEOUT_INSTALACAO_S, creationflags=SEM_JANELA_PS,
+                       env=dict(os.environ, CODEX_NON_INTERACTIVE="1"))
+    finally:
+        os.remove(tmp)
+    if not _codex_exe():
+        raise RuntimeError("o instalador do Codex rodou mas o codex.exe nao apareceu")
+
+
+def criar_atalhos_codex(seco, mudou):
+    """Menu Iniciar: 'Codex' e 'Codex --resume' (seletor com as conversas de todas as pastas), no Windows Terminal,
+    como administrador, na pasta de trabalho e sem pedir aprovacao (o equivalente ao --dangerously-skip-permissions)."""
+    exe = _codex_exe()
+    if not exe or not os.path.isdir(MENU):
+        return
+    livre = "--dangerously-bypass-approvals-and-sandbox"
+    comandos = {"Codex.lnk": f"& '{exe}' {livre}",
+                "Codex --resume.lnk": f"& '{exe}' resume --all {livre}"}
+    gravar_atalhos(comandos, (ICONE_CODEX if os.path.isfile(ICONE_CODEX) else exe) + ",0", seco, mudou)
+
+
+def comando_gancho_codex():
+    python = os.path.join(os.path.dirname(sys.executable), "python.exe")
+    python = python if os.path.exists(python) else sys.executable
+    # o Codex roda o comando do hook pelo PowerShell: sem o & o caminho entre aspas vira so um texto (nao executa)
+    return f'& "{python}" -I "{os.path.join(AQUI, GANCHO_CODEX)}"'
+
+
+def montar_hooks_codex(atual):
+    """~/.codex/hooks.json com o Stop e o SessionEnd da skill; os hooks dos outros ficam como estao.
+    None se o arquivo atual nao for um hooks.json que se entenda (nao mexe)."""
+    if atual is None:
+        atual = {}
+    if not isinstance(atual, dict) or not isinstance(atual.get("hooks", {}), dict):
+        return None
+    novo = json.loads(json.dumps(atual))
+    hooks = novo.setdefault("hooks", {})
+    meu = {"hooks": [{"type": "command", "command": comando_gancho_codex(), "timeout": TIMEOUT_HOOK_CODEX_S}]}
+    for evento in ("Stop", "SessionEnd"):
+        grupos = hooks.get(evento, [])
+        if not isinstance(grupos, list):
+            return None
+        outros = [g for g in grupos if not (isinstance(g, dict) and any(
+            isinstance(h, dict) and GANCHO_CODEX in str(h.get("command", "")) for h in g.get("hooks") or []))]
+        hooks[evento] = outros + [meu]
+    return novo
+
+
+def confiar_hooks_codex(seco, mudou):
+    """O Codex so roda hook marcado como confiavel. Marca os DESTA skill (o comando dela, o hash que o Codex mostra
+    agora), pela API oficial (config/value/write), sem tocar nos outros. Hook mudou = hash novo = marca de novo."""
+    import codex
+    if not codex.instalado():
+        return
+    caminho = os.path.normcase(os.path.realpath(os.path.join(CODEX_DIR, "hooks.json")))
+    with codex.Servidor() as srv:
+        grupos = (srv.chamar("hooks/list", {"cwds": [WS]}) or {}).get("data") or []
+        pendentes = {h["key"]: {"trusted_hash": h["currentHash"]} for g in grupos for h in g.get("hooks") or []
+                     if isinstance(h, dict) and h.get("source") == "user" and GANCHO_CODEX in str(h.get("command", ""))
+                     and os.path.normcase(os.path.realpath(str(h.get("sourcePath", "")))) == caminho
+                     and h.get("trustStatus") != "trusted" and isinstance(h.get("currentHash"), str)}
+        if not pendentes:
+            return
+        mudou.append("confianca dos hooks do Codex")
+        if not seco:
+            srv.chamar("config/value/write", {"keyPath": "hooks.state", "mergeStrategy": "upsert", "value": pendentes})
+
+
+def montar_agents_codex(atual):
+    """AGENTS.md global do Codex: o bloco gerado no topo; o que ja estava escrito fica embaixo, intacto."""
+    memoria = os.path.join(CLAUDE, "projects", re.sub(r"[^A-Za-z0-9]", "-", WS), "memory", "MEMORY.md")
+    with open(MODELO_CODEX, encoding="utf-8") as f:
+        bloco = f.read().replace("{HOME}", HOME).replace("{MEMORIA}", memoria).strip()
+    fora = re.sub(re.escape(INICIO_AGENTS) + r".*?" + re.escape(FIM_AGENTS) + r"\n*", "", atual or "", flags=re.S)
+    novo = f"{INICIO_AGENTS}\n{bloco}\n{FIM_AGENTS}\n"
+    return novo + ("\n" + fora.lstrip("\n") if fora.strip() else "")
+
+
+def instalar_codex_config(seco, mudou):
+    if not _codex_exe() or not os.path.isdir(CODEX_DIR):
+        return
+    agents = os.path.join(CODEX_DIR, "AGENTS.md")
+    try:
+        with open(agents, encoding="utf-8") as f:
+            atual = f.read()
+    except FileNotFoundError:
+        atual = ""
+    gravar(agents, montar_agents_codex(atual), seco, mudou)
+    caminho = os.path.join(CODEX_DIR, "hooks.json")
+    invalido = object()
+    atual = ler_json(caminho, invalido) if os.path.exists(caminho) else None
+    hooks = None if atual is invalido else montar_hooks_codex(atual)    # arquivo que nao se entende: nao mexe
+    if hooks is not None:
+        gravar(caminho, hooks, seco, mudou)
+    confiar_hooks_codex(seco, mudou)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--seco", action="store_true", help="so mostra o que mudaria")
@@ -433,8 +570,15 @@ def main():
     settings = montar_settings_claude()
     if settings is not None:
         gravar(os.path.join(CLAUDE, "settings.json"), settings, a.seco, mudou)
+    falhou = False
+    for passo in (instalar_codex, criar_atalhos_codex, instalar_codex_config):
+        try:                                       # Codex fora do ar nao impede o resto do ambiente
+            passo(a.seco, mudou)
+        except (OSError, RuntimeError, ValueError) as e:
+            falhou = True
+            print(f"codex ({passo.__name__}): {type(e).__name__}: {e}", file=sys.stderr)
     print(("mudaria: " if a.seco else "gravado: ") + (", ".join(mudou) if mudou else "nada (ja estava em dia)"))
-    return 0
+    return 1 if falhou else 0
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@
   --claude: #d97757;
   --gemini: #8b7cf6;
   --grok: #c9d1d9;
+  --codex: #10a37f;
   --ok: #3fb950;
   --radius: 10px;
   --mono: ui-monospace, "Cascadia Code", Consolas, "Liberation Mono", Menlo, monospace;
@@ -178,6 +179,10 @@ a:hover {
 
 .dot-grok {
   background: var(--grok);
+}
+
+.dot-codex {
+  background: var(--codex);
 }
 
 .actions {

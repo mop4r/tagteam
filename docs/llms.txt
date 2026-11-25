@@ -1,6 +1,6 @@
 # TagTeam
 
-> Open-source local tool that keeps one coding conversation alive across Claude Code, Google Gemini (Antigravity desktop app and `agy` CLI), and xAI Grok CLI — with automatic two-way session sync, shared rules/skills/plugins/MCP servers, and automatic 5-line handoff notes when a usage limit approaches 95%.
+> Open-source local tool that keeps one coding conversation alive across Claude Code, Google Gemini (Antigravity desktop app and `agy` CLI), xAI Grok CLI, and OpenAI Codex (desktop app and CLI) — with automatic two-way session sync, shared rules/skills/plugins/MCP servers, and automatic 5-line handoff notes when a usage limit approaches 95%.
 
 - Repository: https://github.com/mop4r/tagteam
 - Website (English): https://mop4r.github.io/tagteam/
@@ -11,11 +11,11 @@
 
 ## What problem TagTeam solves
 
-When Claude Code hits its 5-hour or 7-day usage limit mid-task, switching to Gemini (Antigravity / `agy`) or Grok CLI normally means starting over and pasting context. TagTeam syncs real native session files in both directions via hooks so `claude --resume`, the Antigravity sidebar, `agy`, and `grok --resume` all show the same conversations with titles and history intact.
+When Claude Code hits its 5-hour or 7-day usage limit mid-task, switching to Gemini (Antigravity / `agy`), Grok CLI or OpenAI Codex normally means starting over and pasting context. TagTeam syncs real native session files in both directions via hooks so `claude --resume`, the Antigravity sidebar, `agy`, and `grok --resume` all show the same conversations with titles and history intact.
 
 ## Core capabilities
 
-- Three-way bidirectional conversation sync: Claude Code JSONL <-> Antigravity SQLite + protobuf (app and `agy` CLI) <-> Grok CLI ACP JSONL.
+- Four-way bidirectional conversation sync: Claude Code JSONL <-> Antigravity SQLite + protobuf (app and `agy` CLI) <-> Grok CLI ACP JSONL <-> OpenAI Codex (app and CLI, through its official local app-server API and native session import).
 - Automatic handoff at 95% of the Claude Code usage limit or Gemini quota: writes a five-line summary (Request, Done, In progress, Next step, Watch out) before stopping.
 - Shared environment by reference (never copied): `~/.claude/CLAUDE.md`, skills, plugins, and MCP servers mirrored to Gemini (`~/.gemini`) and Grok (`~/.grok`).
 - Interactive resume pickers for `agy` (`agy_resume.py`) and Grok (`grok-resume.exe`) with Start Menu shortcuts.
