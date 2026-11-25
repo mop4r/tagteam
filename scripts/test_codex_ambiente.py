@@ -29,7 +29,7 @@ class Base(unittest.TestCase):
         for r, ds, _ in os.walk(self.raiz):
             for d in ds:
                 c = os.path.join(r, d)
-                if os.path.isjunction(c):
+                if ca._eh_juncao(c):
                     os.rmdir(c)
         shutil.rmtree(self.raiz, True)
 
@@ -75,7 +75,7 @@ class TestSkills(Base):
         skill(pasta, "a", "copia velha")
         mudou = []
         ca.aplicar_skills(pasta, ca.plano_skills(pasta, {"a": a, "b": b}, [nossa]), desativadas, mudou, seco=False)
-        self.assertTrue(os.path.isjunction(os.path.join(pasta, "a")))
+        self.assertTrue(ca._eh_juncao(os.path.join(pasta, "a")))
         with open(os.path.join(pasta, "a", "SKILL.md"), encoding="utf-8") as f:
             self.assertIn("versao boa", f.read())
         with open(os.path.join(desativadas, "a", "SKILL.md"), encoding="utf-8") as f:

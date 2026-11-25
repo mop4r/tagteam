@@ -15,6 +15,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import tomllib
 
 HOME = os.path.expanduser("~")
@@ -33,7 +34,12 @@ def _ler_json(caminho, padrao):
 
 
 def _eh_juncao(caminho):
-    return os.path.isjunction(caminho) or os.path.islink(caminho)
+    """Juncao ou link. os.path.isjunction so existe do Python 3.12 em diante: aqui vale do 3.11 (lstat no Windows)."""
+    try:
+        st = os.lstat(caminho)
+    except OSError:
+        return False
+    return stat.S_ISLNK(st.st_mode) or getattr(st, "st_reparse_tag", 0) == getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", -1)
 
 
 def _alvo(caminho):
