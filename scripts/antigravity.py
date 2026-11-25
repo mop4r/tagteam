@@ -199,9 +199,8 @@ def molde_padrao(alvo):
             d[k] = _trocar_textos(d[k], pares)
     for a, n in pares:
         d["workspaces"] = d["workspaces"].replace(a, n)
-    if alvo == "antigravity":
-        uris = json.loads(d["workspaces"] or "[]")
-        d["projeto"] = _projeto_da_workspace(uris[0]) if uris else ""
+    # "projeto" stays the source PC's: achar_molde -> _ajustar_projeto swaps it for this PC's in the field AND inside
+    # the summary and metadata (swapping only the field left the other PC's id in the blob, and the app hid it)
     return Molde(**d)
 
 
@@ -434,6 +433,31 @@ def gravar_anotacao(cascade, titulo, base=None, tags=("claude",)):
     os.replace(tmp, os.path.join(pasta, cascade + ".pbtxt"))
 
 
+MAX_CACHE = 64 * 1024 * 1024
+
+
+def _tirar_do_cache(cascade, base):
+    """agyhub_summaries_proto.pb (list of {1: cascadeId, 2: summary}): the app rebuilds the index row from it on start.
+    If the entry stays, the deleted version comes back as a ghost ("its data was not found"). Unreadable cache: no-op."""
+    caminho = os.path.join(base, "agyhub_summaries_proto.pb")
+    if not os.path.isfile(caminho) or os.path.getsize(caminho) > MAX_CACHE:
+        return
+    with open(caminho, "rb") as f:
+        dados = f.read()
+    try:
+        campos = pb.ler(dados)
+        alvo = cascade.encode()
+        resto = [c for c in campos if not (c[1] == 2 and pb.obter(c[2], [1]) == alvo)]
+    except ValueError:
+        return
+    if len(resto) == len(campos):
+        return
+    tmp = caminho + ".novo"
+    with open(tmp, "wb") as f:
+        f.write(pb.gravar(resto))
+    os.replace(tmp, caminho)
+
+
 def apagar_com_app_fechado(cascade, base=None):
     """Tira a versao antiga direto do disco e do indice. So com o app fechado."""
     base = base or base_padrao()
@@ -441,6 +465,7 @@ def apagar_com_app_fechado(cascade, base=None):
             [os.path.join(base, "annotations", cascade + ".pbtxt")]:
         if os.path.exists(caminho):
             os.remove(caminho)
+    _tirar_do_cache(cascade, base)
     indice = os.path.join(base, "conversation_summaries.db")
     if not os.path.exists(indice):
         return            # app/CLI nunca abriu neste PC: connect criaria um indice vazio

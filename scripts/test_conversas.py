@@ -396,5 +396,55 @@ class TestProjetoDoApp(unittest.TestCase):
                 antigravity._ajustar_projeto(m)
             self.assertEqual(m.projeto, pid)
 
+    def test_molde_guardado_de_outro_pc_troca_o_projeto_tambem_dentro_dos_blobs(self):
+        """The stored template comes from another PC: its project id is inside the summary and metadata, not only the field."""
+        home, pasta = tempfile.mkdtemp(), tempfile.mkdtemp()
+        ws = "file:///c%3A/Users/jane/workspace"
+        velho, novo = "aaaaaaaa-0000-4000-8000-000000000001", "bbbbbbbb-0000-4000-8000-000000000002"
+        self.projetos(home, [(novo, {"gitFolder": {"folderUri": ws}})])
+        m = molde_falso(pasta)
+        m.projeto, m.workspaces = velho, json.dumps([ws])
+        m.resumo, m.meta_trajetoria = m.resumo + velho.encode(), m.meta_trajetoria + velho.encode()
+        with mock.patch.object(antigravity, "PASTA_MOLDES", os.path.join(pasta, "moldes")), \
+                mock.patch("os.path.expanduser", side_effect=lambda p: p.replace("~", home)), \
+                mock.patch.object(antigravity, "_achar_molde_local", side_effect=RuntimeError("sem nativa")):
+            antigravity.salvar_molde(m, "antigravity", home=home)
+            r = antigravity.achar_molde(os.path.join(pasta, "antigravity"))
+        self.assertEqual(r.projeto, novo)
+        self.assertNotIn(velho.encode(), r.resumo)
+        self.assertNotIn(velho.encode(), r.meta_trajetoria)
+
+
+class TestApagarTiraDoCache(unittest.TestCase):
+    """Deleted with the app closed must also leave agyhub_summaries_proto.pb: the app rebuilds the row from it on
+    start, and the conversation becomes a ghost in the list ("could not be loaded because its data was not found")."""
+
+    def cache(self, pasta, ids):
+        caminho = os.path.join(pasta, "agyhub_summaries_proto.pb")
+        with open(caminho, "wb") as f:
+            f.write(pb.gravar([[1, 2, pb.gravar([[1, 2, i.encode()], [2, 2, b"resumo"]])] for i in ids]))
+        return caminho
+
+    def ids_no_cache(self, caminho):
+        with open(caminho, "rb") as f:
+            return [pb.obter(v, [1]).decode() for (_, _, v) in pb.ler(f.read())]
+
+    def test_tira_so_a_apagada(self):
+        pasta = tempfile.mkdtemp()
+        caminho = self.cache(pasta, [CASCADE_M, TRAJ_M])
+        antigravity.apagar_com_app_fechado(CASCADE_M, base=pasta)
+        self.assertEqual(self.ids_no_cache(caminho), [TRAJ_M])
+
+    def test_sem_cache_ou_cache_estragado_nao_falha_nem_mexe(self):
+        pasta = tempfile.mkdtemp()
+        antigravity.apagar_com_app_fechado(CASCADE_M, base=pasta)          # no cache
+        caminho = os.path.join(pasta, "agyhub_summaries_proto.pb")
+        with open(caminho, "wb") as f:
+            f.write(b"\xff\xff\xff")
+        antigravity.apagar_com_app_fechado(CASCADE_M, base=pasta)
+        with open(caminho, "rb") as f:
+            self.assertEqual(f.read(), b"\xff\xff\xff")
+
+
 if __name__ == "__main__":
     unittest.main()
