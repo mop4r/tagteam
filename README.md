@@ -166,7 +166,7 @@ python -I sincronizar.py                       # sync everything, every directio
 python -I sincronizar.py --direcao grok        # Claude -> Grok only   (antigravity | claude | grok | claude-de-grok | codex | claude-de-codex | cursor | claude-de-cursor)
 python -I sincronizar.py --sessao <claude-id>  # one Claude session    (--cascade <gemini-id> / --grok <grok-id> / --codex <codex-id> / --cursor <cursor-id>)
 python -I sincronizar.py --forcar              # rewrite / recreate deleted copies (never a continued one)
-python -m unittest discover -p "test_*.py"     # 170+ tests (the Codex ones run the real Codex in a throwaway folder)
+python -m unittest discover -p "test_*.py"     # 160+ tests (the Codex ones run the real Codex in a throwaway folder)
 ```
 
 | Environment variable | Default | What it does |
