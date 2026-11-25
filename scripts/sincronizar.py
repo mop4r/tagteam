@@ -41,6 +41,7 @@ sys.path.insert(0, AQUI)
 import antigravity_db as antigravity  # noqa: E402
 import claude_jsonl  # noqa: E402
 import codex  # noqa: E402
+import cursor  # noqa: E402
 import grok  # noqa: E402
 import para_claude  # noqa: E402
 import servidor_local  # noqa: E402
@@ -58,7 +59,8 @@ ESTADO = os.path.join(PASTA_ESTADO, f"estado-{PC}.json")
 TRAVA = os.path.join(PASTA_ESTADO, f".trava-{PC}")
 # "home" so do app-server filho: copias enxutas das sessoes do Claude com a pasta deste PC (codex.preparar)
 PREPARO = os.path.join(PASTA_ESTADO, f"codex-preparo-{PC}")
-CHAVE_EXPORTADAS = {"antigravity": "exportadas", "grok": "exportadas_grok", "codex": "exportadas_codex"}
+CHAVE_EXPORTADAS = {"antigravity": "exportadas", "grok": "exportadas_grok", "codex": "exportadas_codex",
+                    "cursor": "exportadas_cursor"}
 
 
 # ---------------------------------------------------------------- estado e trava
@@ -106,6 +108,9 @@ def ler_estado():
         "importadas_codex": _filtrar(d, "importadas_codex", lambda _k, v: _entrada_valida(v, "id")),
         "exportadas_codex": _filtrar(d, "exportadas_codex", com_turnos),
         "vistas_codex": _filtrar(d, "vistas_codex", lambda k, v: ID_RE.match(str(k)) and isinstance(v, (int, float, str))),
+        "importadas_cursor": _filtrar(d, "importadas_cursor",
+                                      lambda _k, v: _entrada_valida(v, "id") and isinstance(v.get("pasta"), str)),
+        "exportadas_cursor": _filtrar(d, "exportadas_cursor", com_turnos),
     }
 
 
@@ -209,7 +214,7 @@ def _fora_do_filtro(a, sessao):
     """Filtro de sessao do Claude: --sessao, ou o conjunto que acabou de ser exportado (propagacao)."""
     if a.so is not None:
         return sessao not in a.so
-    return bool((a.sessao and sessao != a.sessao) or a.cascade or a.grok or a.codex)
+    return bool((a.sessao and sessao != a.sessao) or a.cascade or a.grok or a.codex or a.cursor)
 
 
 def para_antigravity(a, estado, cont):
@@ -302,7 +307,7 @@ def exportar(conv, cascade, total, rec, versao_cc, forcar):
 def para_claude_(a, estado, cont, novas):
     versao_cc = None
     for base, cascade in _conversas_antigravity():
-        if (a.cascade and cascade != a.cascade) or a.sessao or a.grok or a.codex:
+        if (a.cascade and cascade != a.cascade) or a.sessao or a.grok or a.codex or a.cursor:
             continue
         try:
             sit = antigravity.situacao(cascade, base)
@@ -395,7 +400,7 @@ def para_grok(a, estado, cont):
 def grok_para_claude(a, estado, cont, novas):
     versao_cc = None
     for pasta, sid in grok.sessoes():
-        if (a.grok and sid != a.grok) or a.sessao or a.cascade or a.codex:
+        if (a.grok and sid != a.grok) or a.sessao or a.cascade or a.codex or a.cursor:
             continue
         try:
             m = grok.marca(pasta)
@@ -601,7 +606,7 @@ def codex_para_claude(a, estado, cont, novas, srv):
     origem = _origens_codex(estado)
     ctx = {"a": a, "estado": estado, "cont": cont, "srv": srv, "versao_cc": None}
     for tid, resumo in codex.listar(srv).items():
-        if not ID_RE.match(tid) or (a.codex and tid != a.codex) or a.sessao or a.cascade or a.grok:
+        if not ID_RE.match(tid) or (a.codex and tid != a.codex) or a.sessao or a.cascade or a.grok or a.cursor:
             continue
         try:
             sessao = _codex_para_claude_uma(ctx, tid, resumo.get("updatedAt"), origem.get(tid))
@@ -664,6 +669,111 @@ def _codex_para_claude_uma(ctx, tid, atual, sessao_origem):
 
 
 # ---------------------------------------------------------------- main
+# ---------------------------------------------------------------- Claude -> Cursor
+def _cursor_pular(a, estado, cont, caminho, sessao, fonte):
+    """None se a sessao vai para o Cursor; senao conta o motivo e devolve True."""
+    anterior = estado["importadas_cursor"].get(sessao)
+    m = cursor.marca(anterior["pasta"]) if anterior and os.path.isdir(anterior["pasta"]) else None
+    if anterior and m is None and not a.forcar:
+        cont["c>u apagadas_no_cursor"] += 1
+        return True
+    if m is not None and (m.get("fonte_tamanho"), m.get("fonte_mtime")) == (fonte["fonte_tamanho"], fonte["fonte_mtime"]) \
+            and not a.forcar:
+        cont["c>u iguais"] += 1
+        return True
+    return None
+
+
+def para_cursor(a, estado, cont):
+    """Grava as sessoes do Claude como conversas do CLI do Cursor (o app le o mesmo armazenamento). Continuada no
+    Cursor nunca e sobrescrita: a versao nova do Claude vira outra conversa e a continuada fica."""
+    if not cursor.instalado():
+        return
+    molde = None
+    imp = estado["importadas_cursor"]
+    for caminho in glob.glob(os.path.join(PROJETOS, "*", "*.jsonl")):
+        sessao = os.path.basename(caminho)[:-6]
+        if not ID_RE.match(sessao) or _fora_do_filtro(a, sessao):
+            continue
+        try:
+            st = os.stat(caminho)
+            fonte = {"fonte": "claude:" + sessao, "fonte_tamanho": st.st_size, "fonte_mtime": round(st.st_mtime, 3)}
+            if _cursor_pular(a, estado, cont, caminho, sessao, fonte):
+                continue
+            conv = claude_jsonl.ler_conversa(caminho, sessao)
+            motivo = ("automaticas" if conv.entrypoint.startswith("sdk") else
+                      "espelhos" if _espelho(conv, sessao, estado, "cursor") else
+                      "vazias" if not any(t.papel == "usuario" for t in conv.turnos) else None)
+            if motivo:
+                cont["c>u " + motivo] += 1
+                continue
+            molde = molde or cursor.achar_molde()
+            if molde is None:
+                cont["c>u sem conversa nativa para molde"] += 1
+                return
+            anterior = imp.get(sessao)
+            m = cursor.marca(anterior["pasta"]) if anterior and os.path.isdir(anterior["pasta"]) else None
+            manter = m is not None and cursor.turnos(anterior["pasta"]) > m.get("turnos", 0)   # continuada no Cursor
+            rotulo = "c>u atualizadas" if anterior else "c>u criadas"
+            if a.seco:
+                print(f"{rotulo}: {conv.titulo} ({len(conv.turnos)} turnos)")
+                cont[rotulo] += 1
+                continue
+            versao = (anterior["versao"] + 1 if manter or m is None else anterior["versao"]) if anterior else 0
+            aid = cursor.id_para_sessao(sessao, versao)
+            pasta = cursor.gravar_conversa(conv, cwd_local(conv.cwd), molde, aid, conv.titulo, fonte)
+            if anterior and not manter and os.path.normcase(anterior["pasta"]) != os.path.normcase(pasta):
+                cursor.apagar(anterior["pasta"])
+            imp[sessao] = {"id": aid, "versao": versao, "pasta": pasta}
+            gravar_estado(estado)
+            cont[rotulo] += 1
+        except (OSError, ValueError, KeyError, sqlite3.Error) as e:
+            cont["erro"] += 1
+            print(f"erro na sessao {sessao} (cursor): {type(e).__name__}: {e}", file=sys.stderr)
+
+
+# ---------------------------------------------------------------- Cursor -> Claude
+def cursor_para_claude(a, estado, cont, novas):
+    exp = estado["exportadas_cursor"]
+    versao_cc = None
+    for pasta, aid in cursor.conversas():
+        if (a.cursor and aid != a.cursor) or a.sessao or a.cascade or a.grok or a.codex:
+            continue
+        try:
+            m = cursor.marca(pasta)
+            if m is not None and cursor.turnos(pasta) <= m.get("turnos", 0):
+                cont["u>c espelhos"] += 1                # veio do Claude e ninguem continuou no Cursor
+                continue
+            rec = exp.get(aid)
+            assin = cursor.assinatura(pasta)
+            if rec and rec.get("assinatura") == assin and not a.forcar:
+                cont["u>c iguais"] += 1
+                continue
+            if rec and para_claude.achar_sessao(rec["sessao"]) is None and not a.forcar:
+                cont["u>c apagadas_no_claude"] += 1
+                continue
+            conv = cursor.ler_conversa(pasta)
+            if not any(t.papel == "usuario" for t in conv.turnos):
+                cont["u>c vazias"] += 1
+                continue
+            rotulo = "u>c atualizadas" if rec else "u>c criadas"
+            cont[rotulo] += 1
+            if a.seco:
+                print(f"{rotulo}: {conv.titulo} ({len(conv.turnos)} turnos)")
+                continue
+            versao = _versao_no_claude(rec)
+            sessao = para_claude.id_sessao(aid, versao, "cursor")
+            cwd = cwd_local(conv.cwd)
+            versao_cc = versao_cc or para_claude.versao_claude()
+            para_claude.gravar_sessao(conv, sessao, para_claude.pasta_do_projeto(cwd), cwd, versao_cc, "cursor")
+            exp[aid] = {"sessao": sessao, "versao": versao, "assinatura": assin, "turnos": len(conv.turnos)}
+            gravar_estado(estado)
+            novas.add(sessao)
+        except (OSError, ValueError, KeyError, sqlite3.Error) as e:
+            cont["erro"] += 1
+            print(f"erro na conversa {aid} (cursor -> claude): {type(e).__name__}: {e}", file=sys.stderr)
+
+
 class _CodexPreguicoso:
     """Um app-server do Codex por rodada, aberto so se alguma direcao precisar e sempre encerrado no fim."""
 
@@ -697,25 +807,26 @@ def _codex(a, estado, cont, srv, fn, *args):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--direcao", choices=("ambas", "antigravity", "claude", "grok", "claude-de-grok", "codex",
-                                          "claude-de-codex"), default="ambas")
+                                          "claude-de-codex", "cursor", "claude-de-cursor"), default="ambas")
     ap.add_argument("--sessao", help="id de uma sessao do Claude")
     ap.add_argument("--cascade", help="id de uma conversa do Antigravity")
     ap.add_argument("--grok", help="id de uma sessao do Grok")
     ap.add_argument("--codex", help="id de uma conversa do Codex")
+    ap.add_argument("--cursor", help="id de uma conversa do Cursor")
     ap.add_argument("--seco", action="store_true", help="so mostra o que faria")
     ap.add_argument("--forcar", action="store_true",
                     help="regrava mesmo sem mudanca e recria a apagada no destino (nunca a continuada)")
     ap.add_argument("--atraso", type=int, default=0, help="segundos de espera antes (deixa outra sincronizacao de pastas terminar)")
     a = ap.parse_args()
     a.so = None
-    for valor in (a.sessao, a.cascade, a.grok, a.codex):
+    for valor in (a.sessao, a.cascade, a.grok, a.codex, a.cursor):
         if valor and not ID_RE.match(valor):
             sys.exit("id invalido")
     if not 0 <= a.atraso <= 600:
         sys.exit("atraso fora de 0..600")
     time.sleep(a.atraso)
-    if not antigravity.bases() and not grok.instalado() and not codex.instalado():
-        print("nem Antigravity, nem Grok, nem Codex instalados neste PC; nada a fazer")
+    if not antigravity.bases() and not grok.instalado() and not codex.instalado() and not cursor.instalado():
+        print("nem Antigravity, nem Grok, nem Codex, nem Cursor instalados neste PC; nada a fazer")
         return 0
     if not a.seco and not pegar_trava():
         print("outra sincronizacao esta rodando; saindo")
@@ -732,6 +843,8 @@ def main():
             para_grok(a, estado, cont)
         if d in ("ambas", "codex"):
             _codex(a, estado, cont, srv, para_codex)
+        if d in ("ambas", "cursor"):
+            para_cursor(a, estado, cont)
         novas = set()
         if d in ("ambas", "claude"):
             para_claude_(a, estado, cont, novas)
@@ -739,13 +852,16 @@ def main():
             grok_para_claude(a, estado, cont, novas)
         if d in ("ambas", "claude-de-codex"):
             _codex(a, estado, cont, srv, codex_para_claude, novas)
+        if d in ("ambas", "claude-de-cursor"):
+            cursor_para_claude(a, estado, cont, novas)
         # o que acabou de virar sessao do Claude segue para as outras IAs na mesma rodada (a de origem reconhece o
         # proprio espelho e nao o recebe de volta)
         if novas and not a.seco:
-            a.so, a.sessao, a.cascade, a.grok, a.codex = novas, None, None, None, None
+            a.so, a.sessao, a.cascade, a.grok, a.codex, a.cursor = novas, None, None, None, None, None
             para_antigravity(a, estado, cont)
             para_grok(a, estado, cont)
             _codex(a, estado, cont, srv, para_codex)
+            para_cursor(a, estado, cont)
         print(json.dumps(dict(sorted(cont.items())), ensure_ascii=False))
         return 1 if cont["erro"] else 0
     finally:

@@ -246,7 +246,7 @@ class TestServidor(unittest.TestCase):
 
 
 def args(**kw):
-    base = dict(sessao=None, cascade=None, grok=None, codex=None, so=None, seco=False, forcar=False)
+    base = dict(sessao=None, cascade=None, grok=None, codex=None, cursor=None, so=None, seco=False, forcar=False)
     base.update(kw)
     return SimpleNamespace(**base)
 

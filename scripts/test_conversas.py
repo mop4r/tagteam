@@ -252,7 +252,8 @@ class TestEstado(unittest.TestCase):
                 f.write("{quebrado")
             self.assertEqual(sincronizar.ler_estado(), {"importadas": {}, "exportadas": {}, "importadas_grok": {},
                                                         "exportadas_grok": {}, "importadas_codex": {},
-                                                        "exportadas_codex": {}, "vistas_codex": {}})
+                                                        "exportadas_codex": {}, "vistas_codex": {},
+                                                        "importadas_cursor": {}, "exportadas_cursor": {}})
         finally:
             sincronizar.ESTADO = antigo
 

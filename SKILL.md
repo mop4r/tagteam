@@ -3,23 +3,23 @@ name: tagteam
 description: Use when the user mentions TagTeam, switching between Claude Code, Gemini (Google Antigravity app or agy CLI) the Grok CLI and OpenAI Codex (Codex app and CLI) when a usage limit runs out, continuing a Claude conversation in Gemini, Grok or Codex (or one of theirs in Claude), conversations missing on one side, a "## Handoff to ..." message, ~/.gemini (GEMINI.md, config/skills.json, hooks.json), ~/.grok (AGENTS.md, config.toml, sessions), ~/.codex (AGENTS.md, hooks.json, codex resume), "trajectory not found" or "trajectory db is not initialized".
 ---
 
-# TagTeam: one conversation across Claude Code, Gemini, Grok and Codex
+# TagTeam: one conversation across Claude Code, Gemini, Grok, Codex and Cursor
 
 ## Overview
 The user alternates between Claude Code, Google Antigravity (Gemini; app and `agy` CLI), the Grok CLI and OpenAI
-Codex (app and CLI, sharing `~/.codex`) when one of them hits its usage limit. TagTeam keeps the four in step:
+Codex (app and CLI, sharing `~/.codex`) when one of them hits its usage limit. TagTeam keeps the five in step (Cursor: the `cursor-agent` CLI, chats in `~/.cursor/chats`):
 - **Environment:** Gemini and Grok read the same rules (`~/.claude/CLAUDE.md`), skills, Claude plugins and MCP
   servers, by reference (`scripts/instalar.py`); Codex gets a generated block in `~/.codex/AGENTS.md` pointing at the
   same rules.
 - **Conversations, every direction:** Claude sessions appear in Antigravity (app and CLI), in Grok and in Codex; theirs
-  appear in `claude --resume` as "[Antigravity] …" / "[Grok] …" / "[Codex] …" (`scripts/sincronizar.py`, driven by
+  appear in `claude --resume` as "[Antigravity] …" / "[Grok] …" / "[Codex] …" / "[Cursor] …" (`scripts/sincronizar.py`, driven by
   hooks on all sides) and are relayed to the others in the same run.
 - **Handoff:** near the limit, the agent writes "## Handoff to …" (Request, Done, In progress, Next step, Watch out).
 
 ## How to operate
 - Re-apply the environment (new plugin, new skill, new PC): `python -I scripts/instalar.py [--seco]`. The Claude
   `SessionStart` hook already does it.
-- Sync by hand: `python -I scripts/sincronizar.py [--direcao antigravity|claude|grok|claude-de-grok|codex|claude-de-codex] [--sessao|--cascade|--grok|--codex <id>] [--seco] [--forcar]`.
+- Sync by hand: `python -I scripts/sincronizar.py [--direcao antigravity|claude|grok|claude-de-grok|codex|claude-de-codex|cursor|claude-de-cursor] [--sessao|--cascade|--grok|--codex|--cursor <id>] [--seco] [--forcar]`.
 - Tests: `python -m unittest discover -s scripts -p "test_*.py"`.
 - Log: `%TEMP%\tagteam\sincronizar.log`. State per PC: `~/.tagteam/estado-<PC>.json`.
 

@@ -1,6 +1,6 @@
 # How TagTeam works
 
-TagTeam converts conversations between four native formats and keeps them in step with hooks. Claude Code is the hub:
+TagTeam converts conversations between five native formats and keeps them in step with hooks. Claude Code is the hub:
 each AI syncs with Claude, and whatever just arrived from one side is relayed to the others in the same run.
 
 ```
@@ -25,6 +25,8 @@ each AI syncs with Claude, and whatever just arrived from one side is relayed to
 | `scripts/gancho.py` | Claude Code and Grok hook (throttled; synchronous inside Grok) |
 | `scripts/gancho_antigravity.py` | Antigravity `Stop` hook (sync + Gemini quota handoff) |
 | `scripts/gancho_codex.py` | Codex `Stop`/`SessionEnd` hook (`~/.codex/hooks.json`) |
+| `scripts/cursor.py` | reads and writes the Cursor CLI chat store (`~/.cursor/chats`) |
+| `scripts/gancho_cursor.py` | Cursor `stop`/`sessionEnd` hook (`~/.cursor/hooks.json`) |
 | `scripts/passagem.py`, `statusline.py` | handoff near the limit (Claude status line usage, Gemini quota API) |
 | `scripts/instalar.py` | environment mirror, hooks, CLIs, shortcuts (idempotent) |
 | `scripts/agy_resume.py`, `grok-resume/` | resume pickers for the `agy` and Grok CLIs |
@@ -118,3 +120,19 @@ each AI syncs with Claude, and whatever just arrived from one side is relayed to
   model in use) and returns `decision: continue` with the request.
 - The receiving side is told by the generated `GEMINI.md` / `AGENTS.md` to follow the handoff, or to reconstruct it
   from the last messages when there is none.
+
+## Cursor (CLI `cursor-agent`)
+- Chats live in `~/.cursor/chats/<md5 of the exact working-folder text>/<agentId>/`: `meta.json` plus `store.db`
+  (SQLite: `blobs(id = sha256 hex, data)` and `meta(key '0')` = hex JSON with `agentId`, `latestRootBlobId`, `name`).
+  The root blob (protobuf) holds the model history (`f1`, JSON role/content blobs) and **one `f8` per turn**.
+- **The `--resume` list reads the title from `meta.json` (`title`)**, not from `store.db`; without it every chat shows
+  as "New Agent".
+- Writing copies the system prompt and context from the newest native chat (the template). A PC with no native chat
+  gets no copies until you open the CLI once.
+- Copies carry `meta('tagteam') = {source, turns}`: same turn count = mirror (never goes back); more turns = continued
+  in Cursor (goes to Claude as "[Cursor] …", and a newer Claude version becomes a new Cursor chat).
+- `~/.cursor/hooks.json` runs `gancho_cursor.py` on `stop` and `sessionEnd` (with `-p` only `sessionEnd` fires).
+- Environment: Cursor reads `~/.claude/skills`, `~/.codex/skills`, `~/.grok/skills`, `CLAUDE.md` and Claude's enabled
+  plugins natively; `instalar.py` writes `~/.cursor/mcp.json` and the claude.ai skill junctions in `~/.cursor/skills`.
+- The Cursor **app** stores its own chats in `%APPDATA%\Cursor\User\globalStorage\state.vscdb`; its setting *Import
+  Claude Code Conversations* shows Claude's sessions there.

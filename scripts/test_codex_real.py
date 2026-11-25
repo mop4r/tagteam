@@ -21,7 +21,7 @@ SESSAO_B = "44444444-4444-4444-8444-444444444444"
 
 
 def args(**kw):
-    base = dict(sessao=None, cascade=None, grok=None, codex=None, so=None, seco=False, forcar=False)
+    base = dict(sessao=None, cascade=None, grok=None, codex=None, cursor=None, so=None, seco=False, forcar=False)
     base.update(kw)
     return SimpleNamespace(**base)
 

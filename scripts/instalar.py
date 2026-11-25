@@ -119,18 +119,23 @@ def instalar_skills_grok(seco, mudou):
     """O Grok le o ~/.claude/skills inteiro (inclusive as do claude.ai, em synced/) e os plugins do Claude, mas quando
     um nome coincide com uma skill que ele traz (docx, pdf, pptx, xlsx...) usa a DELE. As do claude.ai entram por juncao
     em ~/.grok/skills, que vem antes: o Grok usa a mesma versao que o Claude. A local de mesmo nome vale (nao entra)."""
+    if os.path.isfile(GROK_EXE):
+        skills_do_claude_ai_em(GROK, "grok", seco, mudou)
+
+
+def skills_do_claude_ai_em(raiz, rotulo, seco, mudou):
+    """Juncoes das skills do claude.ai (synced/) em <raiz>/skills, que a IA le antes das que ela traz. A skill local de
+    mesmo nome no ~/.claude/skills vale (nao entra)."""
     import codex_ambiente
-    if not os.path.isfile(GROK_EXE):
-        return
     nativas = set(os.listdir(os.path.join(CLAUDE, "skills"))) if os.path.isdir(os.path.join(CLAUDE, "skills")) else set()
     entradas, _plugins = montar_skills_e_plugins()
     pastas = [os.path.normcase(os.path.realpath(x)) for x in pastas_do_claude_ai()]
     do_claude_ai = [e for e in entradas["entries"]
                     if os.path.normcase(os.path.realpath(e["path"].replace("/", os.sep))) in pastas]
     desejadas = {n: v for n, v in codex_ambiente.skills_das_entradas(do_claude_ai).items() if n not in nativas}
-    pasta = os.path.join(GROK, "skills")
+    pasta = os.path.join(raiz, "skills")
     codex_ambiente.aplicar_skills(pasta, codex_ambiente.plano_skills(pasta, desejadas, pastas_do_claude_ai()),
-                                  os.path.join(GROK, "skills-desativadas"), mudou, seco, rotulo="grok")
+                                  os.path.join(raiz, "skills-desativadas"), mudou, seco, rotulo=rotulo)
 
 
 def _eh_juncao(caminho):
@@ -520,6 +525,93 @@ def criar_atalhos_codex(seco, mudou):
     gravar_atalhos(comandos, (ICONE_CODEX if os.path.isfile(ICONE_CODEX) else exe) + ",0", seco, mudou)
 
 
+# ---------------------------------------------------------------- Cursor CLI (atalhos)
+CURSOR_AGENT = os.path.join(os.environ.get("LOCALAPPDATA", ""), "cursor-agent", "cursor-agent.cmd")
+CURSOR_APP = os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "cursor", "Cursor.exe")
+
+
+def criar_atalhos_cursor(seco, mudou):
+    """Menu Iniciar: 'Cursor CLI' e 'Cursor CLI --resume', no Windows Terminal, como administrador, na workspace, sem
+    pedir aprovacao nem sandbox (--force = --yolo). Usa cursor-agent: o comando 'agent' e o mesmo nome que o
+    instalador do Grok cria (~/.grok/bin/agent.exe, copia do grok.exe), e no PATH ele vem antes."""
+    if not os.path.isfile(CURSOR_AGENT) or not os.path.isdir(MENU):
+        return
+    livre = "--force --sandbox disabled --trust"
+    comandos = {"Cursor CLI.lnk": f"& '{CURSOR_AGENT}' {livre}",
+                "Cursor CLI --resume.lnk": f"& '{CURSOR_AGENT}' --resume {livre}"}
+    gravar_atalhos(comandos, (CURSOR_APP if os.path.isfile(CURSOR_APP) else CURSOR_AGENT) + ",0", seco, mudou)
+
+
+# ---------------------------------------------------------------- Cursor (ambiente e gancho)
+# O Cursor ja le sozinho as skills de ~/.claude, ~/.codex e ~/.grok, o CLAUDE.md, e os plugins ligados no Claude
+# (installed_plugins.json + enabledPlugins). Falta: o MCP (ele so le ~/.cursor/mcp.json), o gancho e as skills do
+# claude.ai quando o Grok nao esta instalado.
+CURSOR_DIR = os.path.join(HOME, ".cursor")
+GANCHO_CURSOR = "gancho_cursor.py"
+TIMEOUT_HOOK_CURSOR_S = 30
+
+
+def cursor_instalado():
+    return os.path.isdir(CURSOR_DIR) and (os.path.isfile(CURSOR_AGENT) or os.path.isfile(CURSOR_APP))
+
+
+def comando_gancho_cursor():
+    python = os.path.join(os.path.dirname(sys.executable), "python.exe")
+    python = python if os.path.exists(python) else sys.executable
+    return f'"{python}" -I "{os.path.join(AQUI, GANCHO_CURSOR)}"'
+
+
+def montar_hooks_cursor(atual):
+    """~/.cursor/hooks.json com o stop e o sessionEnd da skill; os hooks dos outros ficam como estao.
+    None se o arquivo atual nao for um hooks.json que se entenda (nao mexe)."""
+    if atual is None:
+        atual = {"version": 1}
+    if not isinstance(atual, dict) or not isinstance(atual.get("hooks", {}), dict):
+        return None
+    novo = json.loads(json.dumps(atual))
+    novo.setdefault("version", 1)
+    hooks = novo.setdefault("hooks", {})
+    meu = {"command": comando_gancho_cursor(), "timeout": TIMEOUT_HOOK_CURSOR_S}
+    for evento in ("stop", "sessionEnd"):
+        lista = hooks.get(evento, [])
+        if not isinstance(lista, list):
+            return None
+        outros = [h for h in lista if not (isinstance(h, dict) and GANCHO_CURSOR in str(h.get("command", "")))]
+        hooks[evento] = outros + [meu]
+    return novo
+
+
+def montar_mcp_cursor(atual):
+    """~/.cursor/mcp.json: os servidores do Claude (~/.claude.json) por cima; os que so existem no Cursor ficam."""
+    novo = json.loads(json.dumps(atual)) if isinstance(atual, dict) else {}
+    servidores = novo.get("mcpServers")
+    if not isinstance(servidores, dict):
+        servidores = novo["mcpServers"] = {}
+    for nome, cfg in (ler_json(os.path.join(HOME, ".claude.json"), {}).get("mcpServers") or {}).items():
+        if not isinstance(cfg, dict):
+            continue
+        definicao = {k: cfg[k] for k in MCP_CHAVES if k in cfg}
+        if "command" in definicao or "url" in definicao:
+            servidores[nome] = definicao
+    return novo
+
+
+def instalar_cursor_config(seco, mudou):
+    if not cursor_instalado():
+        return
+    caminho = os.path.join(CURSOR_DIR, "hooks.json")
+    invalido = object()
+    atual = ler_json(caminho, invalido) if os.path.exists(caminho) else None
+    hooks = None if atual is invalido else montar_hooks_cursor(atual)    # arquivo que nao se entende: nao mexe
+    if hooks is not None:
+        gravar(caminho, hooks, seco, mudou)
+    caminho = os.path.join(CURSOR_DIR, "mcp.json")
+    atual = ler_json(caminho, invalido) if os.path.exists(caminho) else None
+    if atual is not invalido:
+        gravar(caminho, montar_mcp_cursor(atual), seco, mudou)
+    skills_do_claude_ai_em(CURSOR_DIR, "cursor", seco, mudou)
+
+
 def comando_gancho_codex():
     python = os.path.join(os.path.dirname(sys.executable), "python.exe")
     python = python if os.path.exists(python) else sys.executable
@@ -633,6 +725,8 @@ def main():
     settings = montar_settings_claude()
     if settings is not None:
         gravar(os.path.join(CLAUDE, "settings.json"), settings, a.seco, mudou)
+    criar_atalhos_cursor(a.seco, mudou)
+    instalar_cursor_config(a.seco, mudou)
     falhou = False
     for passo in (instalar_codex, criar_atalhos_codex, instalar_codex_config):
         try:                                       # Codex fora do ar nao impede o resto do ambiente

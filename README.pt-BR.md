@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/banner.svg" alt="TagTeam — uma conversa, quatro IAs: Claude Code, Gemini (Antigravity), Grok CLI e OpenAI Codex" width="100%">
+  <img src="assets/banner.svg" alt="TagTeam — uma conversa, cinco IAs: Claude Code, Gemini (Antigravity), Grok CLI, OpenAI Codex e Cursor" width="100%">
 </p>
 
-<h1 align="center">TagTeam — Sincronize conversas entre Claude Code, Gemini (Antigravity), Grok CLI e OpenAI Codex</h1>
+<h1 align="center">TagTeam — Sincronize conversas entre Claude Code, Gemini (Antigravity), Grok CLI, OpenAI Codex e Cursor</h1>
 
 <p align="center">
   <a href="README.md">English</a> · <b>Português (Brasil)</b> · <a href="https://mop4r.github.io/tagteam/pt-br/">Site do projeto</a>
@@ -24,7 +24,7 @@
 ## ✨ Por quê?
 
 Você está no meio de uma refatoração no **Claude Code** e o limite de 5 horas acaba. Abre o **Gemini** (Antigravity),
-o **Grok CLI** ou o **OpenAI Codex**… e começa do zero, colando contexto e explicando tudo de novo.
+o **Grok CLI**, o **OpenAI Codex** ou o **Cursor**… e começa do zero, colando contexto e explicando tudo de novo.
 
 **Com o TagTeam as conversas viajam.** Toda sessão do Claude Code aparece no Gemini, no Grok e no
 Codex, e toda sessão deles aparece no `claude --resume` (e dali nas outras), sozinhas, nos dois sentidos e com o título certo. Perto do limite, a IA que
@@ -32,8 +32,8 @@ vai parar **escreve uma passagem de cinco linhas** para a próxima saber exatame
 
 ## 🚀 Recursos
 
-- 🔁 **Sincronização entre as quatro, nos dois sentidos**, por hooks: Claude Code ⇄ Gemini (app **e** CLI `agy`) ⇄ Grok CLI ⇄ OpenAI Codex (app **e** CLI).
-- ▶️ **Resume nativo em todas:** `claude --resume`, a lista do Antigravity, `agy`, `grok --resume`, o app do Codex e `codex resume`.
+- 🔁 **Sincronização entre as cinco, nos dois sentidos**, por hooks: Claude Code ⇄ Gemini (app **e** CLI `agy`) ⇄ Grok CLI ⇄ OpenAI Codex (app **e** CLI) ⇄ Cursor CLI (`cursor-agent`).
+- ▶️ **Resume nativo em todas:** `claude --resume`, a lista do Antigravity, `agy`, `grok --resume`, o app do Codex, `codex resume` e `cursor-agent --resume`.
 - 🤝 **Passagem automática** a 95% do limite do Claude (ou da cota do Gemini).
 - 🧠 **O mesmo cérebro:** Gemini e Grok leem o seu `~/.claude/CLAUDE.md`, as skills, os plugins do Claude e os servidores MCP, por referência; o Codex recebe um bloco no `AGENTS.md` que aponta para as mesmas regras.
 - 🛡️ **Nunca sobrescreve trabalho seu:** conversa continuada do outro lado vira versão nova; espelho não volta.
@@ -53,7 +53,7 @@ grok    # login uma vez
 codex   # login uma vez
 ```
 
-Pronto: comece uma conversa em qualquer uma das quatro e abra outra; ela já está lá.
+Pronto: comece uma conversa em qualquer uma das cinco e abra outra; ela já está lá.
 
 ## 🧩 Como funciona
 

@@ -21,7 +21,8 @@ PREFIXO_TITULO = "[Antigravity] "
 # origem -> (entrypoint das mensagens, prefixo do titulo, modelo mostrado)
 ORIGENS = {"antigravity": (ENTRYPOINT, PREFIXO_TITULO, "gemini-antigravity"),
            "grok": ("grok-import", "[Grok] ", "grok-cli"),
-           "codex": ("codex-import", "[Codex] ", "codex-cli")}
+           "codex": ("codex-import", "[Codex] ", "codex-cli"),
+           "cursor": ("cursor-import", "[Cursor] ", "cursor")}
 VERSAO_PADRAO = "2.1.0"
 NAMESPACE = uuid.UUID("3f1c9a7e-5b2d-4e8f-a6c0-2d9e7b4f1a85")
 
