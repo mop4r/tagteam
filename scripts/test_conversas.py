@@ -504,7 +504,8 @@ class TestTrava(unittest.TestCase):
         t.start()
         prazo = time.monotonic() + 5
         while time.monotonic() < prazo and not [n for n in os.listdir(self.pasta) if n.startswith(".fila")]:
-            time.sleep(0.01)    # sleep proposital: espera, com prazo, a outra thread entrar na fila
+            # sleep proposital: espera, com prazo, a outra thread entrar na fila
+            time.sleep(0.01)
         self.assertFalse(sincronizar.esperar_trava(["--sessao", "x"], prazo_s=5, pausa_s=0.05))   # ja tem uma igual
         t.join()
         self.assertFalse(resultado["a"])                                                           # prazo acabou
