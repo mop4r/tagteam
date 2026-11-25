@@ -382,7 +382,7 @@ def _valor(c, chave):
 
 def _cabecalhos(c, cid):
     saida = []
-    for chave, valor in c.execute("select key, value from cursorDiskKV where key like ? order by key",
+    for _chave, valor in c.execute("select key, value from cursorDiskKV where key like ? order by key",
                                   (f"composerConvHeaders:{cid}:%",)):
         try:
             pedaco = json.loads(valor) if valor and len(valor) <= MAX_VALOR_APP else []
