@@ -750,45 +750,70 @@ def para_cursor(a, estado, cont):
 
 
 # ---------------------------------------------------------------- Cursor -> Claude
-def cursor_para_claude(a, estado, cont, novas):
+def _cursor_exportar(a, estado, cont, novas, ctx, aid, assin, ler):
+    """Grava no Claude uma conversa do Cursor (do CLI ou do app); ler() devolve a Conversa so se precisar."""
     exp = estado["exportadas_cursor"]
-    versao_cc = None
+    rec = exp.get(aid)
+    if rec and rec.get("assinatura") == assin and not a.forcar:
+        cont["u>c iguais"] += 1
+        return
+    if rec and para_claude.achar_sessao(rec["sessao"]) is None and not a.forcar:
+        cont["u>c apagadas_no_claude"] += 1
+        return
+    conv = ler()
+    if not any(t.papel == "usuario" for t in conv.turnos):
+        cont["u>c vazias"] += 1
+        return
+    rotulo = "u>c atualizadas" if rec else "u>c criadas"
+    cont[rotulo] += 1
+    if a.seco:
+        print(f"{rotulo}: {conv.titulo} ({len(conv.turnos)} turnos)")
+        return
+    versao = _versao_no_claude(rec)
+    sessao = para_claude.id_sessao(aid, versao, "cursor")
+    cwd = cwd_local(conv.cwd)
+    ctx["versao_cc"] = ctx.get("versao_cc") or para_claude.versao_claude()
+    para_claude.gravar_sessao(conv, sessao, para_claude.pasta_do_projeto(cwd), cwd, ctx["versao_cc"], "cursor")
+    exp[aid] = {"sessao": sessao, "versao": versao, "assinatura": assin, "turnos": len(conv.turnos)}
+    gravar_estado(estado)
+    novas.add(sessao)
+
+
+def _cursor_pular_filtro(a, aid):
+    return bool((a.cursor and aid != a.cursor) or a.sessao or a.cascade or a.grok or a.codex)
+
+
+def cursor_para_claude(a, estado, cont, novas):
+    """Conversas do CLI (~/.cursor/chats) e do app (state.vscdb, so leitura) viram sessoes "[Cursor] ..." no Claude."""
+    ctx = {}
     for pasta, aid in cursor.conversas():
-        if (a.cursor and aid != a.cursor) or a.sessao or a.cascade or a.grok or a.codex:
+        if _cursor_pular_filtro(a, aid):
             continue
         try:
             m = cursor.marca(pasta)
             if m is not None and cursor.turnos(pasta) <= m.get("turnos", 0):
                 cont["u>c espelhos"] += 1                # veio do Claude e ninguem continuou no Cursor
                 continue
-            rec = exp.get(aid)
-            assin = cursor.assinatura(pasta)
-            if rec and rec.get("assinatura") == assin and not a.forcar:
-                cont["u>c iguais"] += 1
-                continue
-            if rec and para_claude.achar_sessao(rec["sessao"]) is None and not a.forcar:
-                cont["u>c apagadas_no_claude"] += 1
-                continue
-            conv = cursor.ler_conversa(pasta)
-            if not any(t.papel == "usuario" for t in conv.turnos):
-                cont["u>c vazias"] += 1
-                continue
-            rotulo = "u>c atualizadas" if rec else "u>c criadas"
-            cont[rotulo] += 1
-            if a.seco:
-                print(f"{rotulo}: {conv.titulo} ({len(conv.turnos)} turnos)")
-                continue
-            versao = _versao_no_claude(rec)
-            sessao = para_claude.id_sessao(aid, versao, "cursor")
-            cwd = cwd_local(conv.cwd)
-            versao_cc = versao_cc or para_claude.versao_claude()
-            para_claude.gravar_sessao(conv, sessao, para_claude.pasta_do_projeto(cwd), cwd, versao_cc, "cursor")
-            exp[aid] = {"sessao": sessao, "versao": versao, "assinatura": assin, "turnos": len(conv.turnos)}
-            gravar_estado(estado)
-            novas.add(sessao)
+            _cursor_exportar(a, estado, cont, novas, ctx, aid, cursor.assinatura(pasta),
+                             lambda p=pasta: cursor.ler_conversa(p))
         except (OSError, ValueError, KeyError, sqlite3.Error) as e:
             cont["erro"] += 1
             print(f"erro na conversa {aid} (cursor -> claude): {type(e).__name__}: {e}", file=sys.stderr)
+    try:
+        do_app = cursor.conversas_app()
+    except sqlite3.Error as e:                           # app gravando no banco: fica para a proxima rodada
+        cont["erro"] += 1
+        print(f"erro ao ler as conversas do app do Cursor: {type(e).__name__}: {e}", file=sys.stderr)
+        do_app = []
+    for cid, _dados in do_app:
+        if _cursor_pular_filtro(a, cid):
+            continue
+        try:
+            conv, assin = cursor.ler_conversa_app(cid)
+            _cursor_exportar(a, estado, cont, novas, ctx, cid, assin, lambda c=conv: c)
+        except (OSError, ValueError, KeyError, sqlite3.Error) as e:
+            cont["erro"] += 1
+            print(f"erro na conversa {cid} (app do cursor -> claude): {type(e).__name__}: {e}", file=sys.stderr)
 
 
 class _CodexPreguicoso:

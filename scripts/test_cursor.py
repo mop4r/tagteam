@@ -65,7 +65,8 @@ class Base(unittest.TestCase):
     def setUp(self):
         self.raiz = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.raiz, True)
-        p = mock.patch.dict(os.environ, {"TAGTEAM_CURSOR_HOME": os.path.join(self.raiz, "cursor")})
+        p = mock.patch.dict(os.environ, {"TAGTEAM_CURSOR_HOME": os.path.join(self.raiz, "cursor"),
+                                         "TAGTEAM_CURSOR_APP_DB": os.path.join(self.raiz, "app", "state.vscdb")})
         p.start()
         self.addCleanup(p.stop)
         os.makedirs(cursor.pasta_chats())
@@ -297,11 +298,63 @@ class TestDecisoes(Base):
         db.close()
         self.assertEqual(self.rodar(sincronizar.cursor_para_claude, estado, set())["u>c apagadas_no_claude"], 1)
 
+    def test_conversa_do_app_vai_ao_claude_e_depois_fica_igual(self):
+        cid = TestApp.CID
+        banco_app(cursor.banco_app(), {cid: ("Saudacao", [(1, "oi"), (2, "Oi.")])})
+        estado = sincronizar.ler_estado()
+        novas = set()
+        self.assertEqual(self.rodar(sincronizar.cursor_para_claude, estado, novas, cursor=cid)["u>c criadas"], 1)
+        self.assertEqual(estado["exportadas_cursor"][cid]["turnos"], 2)
+        self.assertIsNotNone(sincronizar.para_claude.achar_sessao(next(iter(novas))))
+        self.assertEqual(self.rodar(sincronizar.cursor_para_claude, estado, set(), cursor=cid)["u>c iguais"], 1)
+        banco_app(cursor.banco_app(), {cid: ("Saudacao", [(1, "oi"), (2, "Oi."), (1, "mais"), (2, "ok")])})
+        self.assertEqual(self.rodar(sincronizar.cursor_para_claude, estado, set(), cursor=cid)["u>c atualizadas"], 1)
+
     def test_filtro_por_id_do_cursor(self):
         estado = sincronizar.ler_estado()
         cont = self.rodar(sincronizar.cursor_para_claude, estado, set(), cursor="00000000-0000-4000-8000-000000000000")
         self.assertEqual(sum(cont.values()), 0)
         self.assertEqual(sum(self.rodar(sincronizar.para_cursor, estado, cursor="x").values()), 0)
+
+
+def banco_app(caminho, conversas):
+    """state.vscdb do app com {id: (nome, [(tipo, texto)])}: tipo 1 = usuario, 2 = assistente, 'pensa' = raciocinio."""
+    os.makedirs(os.path.dirname(caminho), exist_ok=True)
+    db = sqlite3.connect(caminho)
+    db.execute("create table if not exists cursorDiskKV (key text unique on conflict replace, value blob)")
+    for cid, (nome, msgs) in conversas.items():
+        cab = []
+        for i, (tipo, texto) in enumerate(msgs):
+            bid = f"b{i}"
+            corpo = {"thinking": {"text": texto}} if tipo == "pensa" else {"text": texto}
+            db.execute("insert into cursorDiskKV values (?, ?)", (f"bubbleId:{cid}:{bid}", json.dumps(
+                {"bubbleId": bid, "startedAtMs": 1795636720318 + i, **corpo})))
+            cab.append({"bubbleId": bid, "type": 1 if tipo == 1 else 2})
+        db.execute("insert into cursorDiskKV values (?, ?)", (f"composerConvHeaders:{cid}:000000", json.dumps(cab)))
+        db.execute("insert into cursorDiskKV values (?, ?)", (f"composerData:{cid}", json.dumps({
+            "composerId": cid, "name": nome, "lastUpdatedAt": len(msgs),
+            "workspaceIdentifier": {"uri": {"fsPath": CWD}}})))
+    db.commit()
+    db.close()
+
+
+class TestApp(Base):
+    CID = "2f68c782-98fc-4fd7-8eee-7139b28359ef"
+
+    def test_le_a_conversa_do_app_sem_raciocinio(self):
+        banco_app(cursor.banco_app(), {self.CID: ("Saudacao", [(1, "oi"), ("pensa", "segredo do modelo"),
+                                                               (2, "Oi."), (2, "Ajudo?")])})
+        self.assertEqual([c for c, _d in cursor.conversas_app()], [self.CID])
+        conv, assin = cursor.ler_conversa_app(self.CID)
+        self.assertEqual([(t.papel, t.texto) for t in conv.turnos], [("usuario", "oi"), ("assistente", "Oi.\n\nAjudo?")])
+        self.assertEqual((conv.titulo, conv.cwd), ("Saudacao", CWD))
+        banco_app(cursor.banco_app(), {self.CID: ("Saudacao", [(1, "oi"), (2, "Oi."), (1, "e ai?")])})
+        self.assertNotEqual(cursor.ler_conversa_app(self.CID)[1], assin)
+
+    def test_sem_app_ou_rascunho_nao_lista(self):
+        self.assertEqual(cursor.conversas_app(), [])
+        banco_app(cursor.banco_app(), {self.CID: ("x", [])})
+        self.assertEqual(cursor.conversas_app(), [])
 
 
 class TestGancho(unittest.TestCase):

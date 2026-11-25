@@ -351,3 +351,112 @@ def apagar(pasta):
     """Tira uma copia nossa (nunca uma conversa nativa: so as que tem a marca)."""
     if marca(pasta) is not None and os.path.isdir(pasta):
         shutil.rmtree(pasta)
+
+
+# ---------------------------------------------------------------- app do Cursor (so leitura)
+# O app guarda as conversas no proprio banco (globalStorage/state.vscdb, tabela cursorDiskKV), nao em ~/.cursor/chats:
+# composerData:<id> (nome, pasta, datas), composerConvHeaders:<id>:<pedaco> (a ordem das mensagens: type 1 = usuario,
+# 2 = assistente) e bubbleId:<id>:<mensagem> (o texto). O app fica aberto e grava ali o tempo todo: aqui so se le, em
+# modo somente leitura. Claude -> app e a opcao nativa dele ("Import Claude Code Conversations").
+MAX_VALOR_APP = 16 * 1024 * 1024
+
+
+def banco_app():
+    padrao = os.path.join(os.environ.get("APPDATA", ""), "Cursor", "User", "globalStorage", "state.vscdb")
+    return os.environ.get("TAGTEAM_CURSOR_APP_DB") or padrao
+
+
+def _abrir_app():
+    return sqlite3.connect(f"file:{banco_app()}?mode=ro", uri=True, timeout=10)
+
+
+def _valor(c, chave):
+    linha = c.execute("select value from cursorDiskKV where key = ?", (chave,)).fetchone()
+    if not linha or linha[0] is None or len(linha[0]) > MAX_VALOR_APP:
+        return None
+    try:
+        return json.loads(linha[0])
+    except (ValueError, TypeError):
+        return None
+
+
+def _cabecalhos(c, cid):
+    saida = []
+    for chave, valor in c.execute("select key, value from cursorDiskKV where key like ? order by key",
+                                  (f"composerConvHeaders:{cid}:%",)):
+        try:
+            pedaco = json.loads(valor) if valor and len(valor) <= MAX_VALOR_APP else []
+        except (ValueError, TypeError):
+            continue
+        saida += [h for h in pedaco if isinstance(h, dict) and isinstance(h.get("bubbleId"), str)]
+    return saida
+
+
+def conversas_app():
+    """[(id, composerData)] das conversas do app com ao menos uma mensagem. [] se o app nao estiver instalado."""
+    if not os.path.isfile(banco_app()):
+        return []
+    c = _abrir_app()
+    try:
+        ids = [k.split(":", 1)[1] for (k,) in c.execute(
+            "select key from cursorDiskKV where key like 'composerData:%'")]
+        saida = []
+        for cid in ids:
+            if not ID_RE.match(cid):
+                continue
+            dados = _valor(c, f"composerData:{cid}")
+            if isinstance(dados, dict) and not dados.get("isDraft") and _cabecalhos(c, cid):
+                saida.append((cid, dados))
+        return saida
+    finally:
+        c.close()
+
+
+def assinatura_app(dados, cabecalhos):
+    """Muda quando a conversa anda: a ultima atualizacao e a lista de mensagens."""
+    base = json.dumps([dados.get("lastUpdatedAt"), dados.get("conversationCheckpointLastUpdatedAt"),
+                       [h.get("bubbleId") for h in cabecalhos]], separators=(",", ":"))
+    return hashlib.sha256(base.encode()).hexdigest()
+
+
+def _texto_da_mensagem(b):
+    """Texto de uma mensagem do app; raciocinio fica de fora; ferramenta vira uma linha."""
+    texto = b.get("text") if isinstance(b.get("text"), str) else ""
+    ferramenta = b.get("toolFormerData")
+    if isinstance(ferramenta, dict) and not texto.strip():
+        nome = str(ferramenta.get("name") or ferramenta.get("tool") or "ferramenta")
+        return f"`[{nome[:60]}]`"
+    return texto.strip()
+
+
+def ler_conversa_app(cid):
+    """(Conversa, assinatura) de uma conversa do app."""
+    c = _abrir_app()
+    try:
+        dados = _valor(c, f"composerData:{cid}") or {}
+        cabecalhos = _cabecalhos(c, cid)
+        turnos = []
+        for h in cabecalhos:
+            b = _valor(c, f"bubbleId:{cid}:{h['bubbleId']}")
+            if not isinstance(b, dict):
+                continue
+            texto = _texto_da_mensagem(b)
+            if not texto:
+                continue
+            criada = _quando(b.get("startedAtMs") or h.get("startedAtMs"), datetime.now(timezone.utc))
+            papel = "usuario" if h.get("type") == 1 else "assistente"
+            if papel == "assistente" and turnos and turnos[-1].papel == "assistente":
+                turnos[-1].texto += "\n\n" + texto
+            else:
+                turnos.append(Turno(papel, texto, criada))
+    finally:
+        c.close()
+    for t in turnos:
+        t.texto = _cortar(t.texto)
+    uri = (dados.get("workspaceIdentifier") or {}).get("uri") or {}
+    conv = Conversa(sessao=cid, cwd=str(uri.get("fsPath") or "") if isinstance(uri, dict) else "")
+    conv.turnos = turnos
+    nome = dados.get("name") if isinstance(dados.get("name"), str) else ""
+    primeiro = next((t.texto for t in turnos if t.papel == "usuario"), "")
+    conv.titulo = (nome or (primeiro.splitlines()[0] if primeiro else "") or "Conversa do Cursor").strip()[:80]
+    return conv, assinatura_app(dados, cabecalhos)
