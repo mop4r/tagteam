@@ -149,9 +149,37 @@ def _projeto_da_workspace(uri_ws):
         except (OSError, json.JSONDecodeError):
             continue
         for r in (d.get("projectResources") or {}).get("resources") or []:
-            if str(r.get("folderUri", "")).lower() == uri_ws.lower():
+            if not isinstance(r, dict):
+                continue
+            # the app writes {"gitFolder": {"folderUri": ...}}; older format: {"folderUri": ...}
+            uris = [r.get("folderUri")] + [v.get("folderUri") for v in r.values() if isinstance(v, dict)]
+            if any(str(u or "").lower() == uri_ws.lower() for u in uris):
                 return str(d.get("id", ""))
     return ""
+
+
+def _projetos_existentes():
+    import glob
+    return {os.path.basename(f)[:-5] for f in
+            glob.glob(os.path.join(os.path.expanduser("~"), ".gemini", "config", "projects", "*.json"))}
+
+
+def _ajustar_projeto(molde):
+    """The app changes the project id when the folder is reopened; the template (an old native conversation) may point
+    to a project that no longer exists, and the app hides every conversation stored under it. Swap it for the current
+    project of the workspace (the id also appears in raw_summary and in the trajectory metadata, as same-length text)."""
+    import json
+    velho = molde.projeto or ""
+    if not velho or velho.startswith("default-") or velho in _projetos_existentes():
+        return
+    uris = json.loads(molde.workspaces or "[]")
+    novo = _projeto_da_workspace(uris[0]) if uris else ""
+    if not novo or len(novo) != len(velho):
+        return
+    v, n = velho.encode(), novo.encode()
+    molde.projeto = novo
+    molde.resumo = molde.resumo.replace(v, n)
+    molde.meta_trajetoria = molde.meta_trajetoria.replace(v, n)
 
 
 def molde_padrao(alvo):
@@ -181,12 +209,13 @@ def achar_molde(base=None):
     """Conversa nativa deste PC como molde; sem nenhuma (PC novo), o molde guardado na skill."""
     base = base or base_padrao()
     try:
-        return _achar_molde_local(base)
+        m = _achar_molde_local(base)
     except RuntimeError:
         m = molde_padrao(os.path.basename(base))
         if m is None:
             raise
-        return m
+    _ajustar_projeto(m)
+    return m
 
 
 def _achar_molde_local(base):

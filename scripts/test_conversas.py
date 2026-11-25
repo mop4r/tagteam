@@ -350,6 +350,51 @@ class TestApagarSemIndice(unittest.TestCase):
         antigravity.apagar_com_app_fechado(CASCADE_M, base)
         self.assertEqual(os.path.getsize(indice), 0)
 
+class TestProjetoDoApp(unittest.TestCase):
+    """The app changes the project id when the folder is recreated; an old template sent copies to a missing project."""
+
+    def projetos(self, home, itens):
+        pasta = os.path.join(home, ".gemini", "config", "projects")
+        os.makedirs(pasta)
+        for pid, recurso in itens:
+            with open(os.path.join(pasta, pid + ".json"), "w", encoding="utf-8") as f:
+                json.dump({"id": pid, "projectResources": {"resources": [recurso]}}, f)
+
+    def test_acha_projeto_no_formato_gitfolder(self):
+        home = tempfile.mkdtemp()
+        ws = "file:///c%3A/Users/jane/workspace"
+        self.projetos(home, [("novo-id", {"gitFolder": {"folderUri": ws, "allowWrite": True}}),
+                             ("outro", {"folderUri": "file:///c%3A/outra"})])
+        with mock.patch("os.path.expanduser", side_effect=lambda p: p.replace("~", home)):
+            self.assertEqual(antigravity._projeto_da_workspace(ws.upper()), "novo-id")
+            self.assertEqual(antigravity._projeto_da_workspace("file:///c%3A/outra"), "outro")
+            self.assertEqual(antigravity._projeto_da_workspace("file:///nada"), "")
+
+    def test_molde_com_projeto_sumido_vai_para_o_projeto_atual_da_workspace(self):
+        home, pasta = tempfile.mkdtemp(), tempfile.mkdtemp()
+        ws = "file:///c%3A/Users/jane/workspace"
+        velho, novo = "aaaaaaaa-0000-4000-8000-000000000001", "bbbbbbbb-0000-4000-8000-000000000002"
+        self.projetos(home, [(novo, {"gitFolder": {"folderUri": ws}})])
+        m = molde_falso(pasta)
+        m.projeto, m.workspaces = velho, json.dumps([ws])
+        m.resumo = m.resumo + velho.encode()
+        m.meta_trajetoria = m.meta_trajetoria + velho.encode()
+        with mock.patch("os.path.expanduser", side_effect=lambda p: p.replace("~", home)):
+            antigravity._ajustar_projeto(m)
+        self.assertEqual(m.projeto, novo)
+        self.assertNotIn(velho.encode(), m.resumo)
+        self.assertNotIn(velho.encode(), m.meta_trajetoria)
+
+    def test_projeto_que_existe_ou_cli_fica_igual(self):
+        home = tempfile.mkdtemp()
+        ws = "file:///c%3A/Users/jane/workspace"
+        self.projetos(home, [("atual", {"gitFolder": {"folderUri": ws}}), ("outro", {"gitFolder": {"folderUri": "x"}})])
+        for pid in ("outro", "default-cli-project", ""):
+            m = molde_falso(tempfile.mkdtemp())
+            m.projeto, m.workspaces = pid, json.dumps([ws])
+            with mock.patch("os.path.expanduser", side_effect=lambda p: p.replace("~", home)):
+                antigravity._ajustar_projeto(m)
+            self.assertEqual(m.projeto, pid)
 
 if __name__ == "__main__":
     unittest.main()
