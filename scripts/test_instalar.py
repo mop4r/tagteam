@@ -99,5 +99,60 @@ class TestSettingsClaude(unittest.TestCase):
             self.assertIsNone(instalar.montar_settings_claude())            # segunda vez: nada muda
 
 
+class TestAmbienteIgual(unittest.TestCase):
+    """Skills do claude.ai e MCP atualizado chegam as outras IAs."""
+
+    def setUp(self):
+        import shutil
+        self.raiz = os.path.realpath(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.raiz, True)
+        self.claude = os.path.join(self.raiz, ".claude")
+        p = mock.patch.object(instalar, "CLAUDE", self.claude)
+        p.start()
+        self.addCleanup(p.stop)
+
+    def skill(self, pasta, nome):
+        os.makedirs(os.path.join(pasta, nome), exist_ok=True)
+        with open(os.path.join(pasta, nome, "SKILL.md"), "w", encoding="utf-8") as f:
+            f.write(f"---\nname: {nome}\n---\n")
+
+    def conta(self, nome, quando, skills):
+        pasta = os.path.join(self.claude, "skills", "synced", nome)
+        for s in skills:
+            self.skill(pasta, s)
+        with open(os.path.join(pasta, "manifest.json"), "w", encoding="utf-8") as f:
+            json.dump({"lastUpdated": quando}, f)
+        return pasta
+
+    def test_skills_do_claude_ai_sem_repetir_a_local(self):
+        local = os.path.join(self.raiz, "local")
+        self.skill(local, "studeo")
+        nova = self.conta("conta-nova", 200, ["docx", "studeo", "pdf"])
+        self.conta("conta-velha", 100, ["docx", "pdf"])               # tudo ja coberto: nem entra
+        self.conta("conta-extra", 50, ["docx", "xlsx"])
+        saida = instalar.entradas_do_claude_ai([{"path": local}])
+        self.assertEqual([os.path.basename(e["path"]) for e in saida], ["conta-nova", "conta-extra"])
+        self.assertEqual(saida[0]["exclude"], ["studeo"])                # a local vale
+        self.assertEqual(saida[1]["exclude"], ["docx"])
+        self.assertEqual(saida[0]["path"], nova.replace("\\", "/"))
+
+    def test_sem_pasta_synced(self):
+        self.assertEqual(instalar.pastas_do_claude_ai(), [])
+        self.assertEqual(instalar.entradas_do_claude_ai([]), [])
+
+    def test_mcp_do_antigravity_acompanha_a_mudanca_no_claude(self):
+        config = os.path.join(self.raiz, "gemini-config")
+        os.makedirs(config)
+        with open(os.path.join(config, "mcp_config.json"), "w", encoding="utf-8") as f:
+            json.dump({"mcpServers": {"projects": {"url": "https://velho"}, "so-do-gemini": {"command": "x"}}}, f)
+        with open(os.path.join(self.raiz, ".claude.json"), "w", encoding="utf-8") as f:
+            json.dump({"mcpServers": {"projects": {"type": "http", "url": "https://novo", "headers": {"A": "b"}}}}, f)
+        with mock.patch.object(instalar, "CONFIG", config), mock.patch.object(instalar, "HOME", self.raiz):
+            m = instalar.montar_mcp()
+        self.assertEqual(m["mcpServers"]["projects"]["url"], "https://novo")
+        self.assertEqual(m["mcpServers"]["projects"]["headers"], {"A": "b"})
+        self.assertIn("so-do-gemini", m["mcpServers"])                   # o que e so do Gemini fica
+
+
 if __name__ == "__main__":
     unittest.main()

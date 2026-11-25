@@ -20,6 +20,7 @@ each AI syncs with Claude, and whatever just arrived from one side is relayed to
 | `scripts/servidor_local.py` | talks to Antigravity's local language server (load, rename, delete conversations live) |
 | `scripts/grok.py` | reads/writes Grok sessions (`updates.jsonl`, `chat_history.jsonl`, `summary.json`) |
 | `scripts/codex.py` | talks to Codex through its official local API (`codex app-server`): list, read, native import |
+| `scripts/codex_ambiente.py` | Codex environment = Claude's: skill junctions, native plugins, MCP servers |
 | `scripts/sincronizar.py` | the engine: every direction, versions, mirrors, relay, per-PC state |
 | `scripts/gancho.py` | Claude Code and Grok hook (throttled; synchronous inside Grok) |
 | `scripts/gancho_antigravity.py` | Antigravity `Stop` hook (sync + Gemini quota handoff) |
@@ -92,6 +93,12 @@ each AI syncs with Claude, and whatever just arrived from one side is relayed to
   command through **PowerShell**, so it is `& "python.exe" -I "gancho_codex.py"`; without `&` a quoted path is just a
   string and nothing runs. Codex only runs **trusted** hooks: `instalar.py` marks TagTeam's own hooks through the
   official API (`hooks/list` → `config/value/write` on `hooks.state`), never anyone else's.
+- **Same environment as Claude** (`scripts/codex_ambiente.py`): one junction per skill in `~/.codex/skills` (Codex
+  follows junctions; `skills/extraRoots/set` is not persisted, so junctions it is), Claude's enabled plugins installed
+  natively from a *local* marketplace that points at `~/.claude/plugins/marketplaces/<name>` (reinstalled when Claude's
+  version is not in Codex's cache yet), and Claude's global MCP servers written with `config/value/write` (Codex's own
+  importer only adds servers that are missing, so a changed token would never arrive). Skills Codex copied from an
+  earlier import are moved to `~/.codex/skills-desativadas` (nothing is deleted).
 - Shortcuts: "Codex" (`--dangerously-bypass-approvals-and-sandbox`) and "Codex --resume" (`codex resume --all`), in
   Windows Terminal as administrator. A new PC gets the CLI from the official installer
   (`https://chatgpt.com/codex/install.ps1`, non-interactive); the app stays with you.

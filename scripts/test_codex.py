@@ -407,6 +407,26 @@ class TestInstalarCodex(unittest.TestCase):
         self.assertEqual(self.instalar.montar_hooks_codex(novo), novo)            # idempotente
         self.assertEqual(len(atual["hooks"]["Stop"]), 2)                          # nao mexe no original
 
+    def test_confia_nos_hooks_do_tagteam_e_dos_plugins_do_claude(self):
+        caminho = os.path.normcase(os.path.realpath(os.path.join(tempfile.gettempdir(), "hooks.json")))
+        nosso = {"key": "k-nosso", "source": "user", "command": '& "py.exe" -I "x/gancho_codex.py"',
+                 "sourcePath": caminho, "trustStatus": "untrusted", "currentHash": "sha256:1", "enabled": True}
+        do_plugin = {"key": "superpowers@spm:hooks/hooks.json:session_start:0:0", "source": "plugin",
+                     "pluginId": "superpowers@spm", "command": "node x/inicio.js", "trustStatus": "untrusted",
+                     "currentHash": "sha256:9", "enabled": True}
+        grupos = [{"hooks": [
+            nosso,
+            dict(nosso, key="k-ja-confiado", trustStatus="trusted"),
+            dict(nosso, key="k-outro-arquivo", sourcePath=os.path.join(tempfile.gettempdir(), "outro.json")),
+            {"key": "k-de-outro", "source": "user", "command": "outro.exe", "sourcePath": caminho,
+             "trustStatus": "untrusted", "currentHash": "sha256:2", "enabled": True},
+            do_plugin,
+            dict(do_plugin, key="outro@x:h:stop:0:0", pluginId="outro@x"),      # plugin que o Claude nao liga
+        ]}]
+        self.assertEqual(self.instalar._ajustes_de_hooks_codex(grupos, caminho, {"superpowers@spm"}), {
+            "k-nosso": {"trusted_hash": "sha256:1"},
+            "superpowers@spm:hooks/hooks.json:session_start:0:0": {"trusted_hash": "sha256:9"}})
+
     def test_hooks_json_que_nao_se_entende_nao_e_mexido(self):
         self.assertIsNone(self.instalar.montar_hooks_codex({"hooks": []}))
         self.assertIsNone(self.instalar.montar_hooks_codex({"hooks": {"Stop": "texto"}}))

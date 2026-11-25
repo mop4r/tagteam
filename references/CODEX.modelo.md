@@ -13,6 +13,12 @@ below this block contradicts `CLAUDE.md`, `CLAUDE.md` wins.**
 2. If it exists, read the memory index `{MEMORIA}` and open the memories related to the task.
 3. If the working folder, or a folder above it, has a `CLAUDE.md`, it acts as the project's `AGENTS.md`.
 
+## Same as Claude Code
+
+- **Skills:** the same as Claude's — junctions in `~/.codex/skills` (your skills and the claude.ai account skills) and
+  Claude's plugins installed here (`superpowers:*`, `static-analysis:*`...). Never copy a skill into `~/.codex`.
+- **MCP servers:** the same as Claude's (`~/.claude.json`), written into `~/.codex/config.toml` by TagTeam.
+
 ## Conversations that come from Claude Code, Gemini and Grok
 
 The user switches between Claude Code, Gemini (Antigravity), Grok and you when one of them hits its usage limit.

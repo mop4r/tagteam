@@ -77,6 +77,7 @@ def montar_skills_e_plugins():
     entradas = []
     if os.path.isdir(os.path.join(CLAUDE, "skills")):
         entradas.append({"path": p(os.path.join(CLAUDE, "skills"))})
+    entradas += entradas_do_claude_ai(entradas)
     plugins = []
     for _nome, pasta in plugins_do_claude():
         if any(os.path.isfile(os.path.join(pasta, m)) for m in (".antigravity-plugin/plugin.json", ".gemini-plugin/plugin.json")):
@@ -84,6 +85,52 @@ def montar_skills_e_plugins():
         elif os.path.isdir(os.path.join(pasta, "skills")):
             entradas.append({"path": p(os.path.join(pasta, "skills"))})
     return {"entries": entradas}, {"entries": plugins}
+
+
+def pastas_do_claude_ai():
+    """Pastas das skills da conta do claude.ai que o Claude Code baixa (~/.claude/skills/synced/<conta>/, vistas no
+    Claude como "anthropic-skills:*"), a atualizada mais recentemente primeiro."""
+    raiz = os.path.join(CLAUDE, "skills", "synced")
+    pastas = [os.path.join(raiz, n) for n in (os.listdir(raiz) if os.path.isdir(raiz) else [])
+              if os.path.isdir(os.path.join(raiz, n))]
+
+    def quando(pasta):
+        v = ler_json(os.path.join(pasta, "manifest.json"), {})
+        return v.get("lastUpdated", 0) if isinstance(v, dict) and isinstance(v.get("lastUpdated"), (int, float)) else 0
+    return sorted(pastas, key=quando, reverse=True)
+
+
+def entradas_do_claude_ai(anteriores):
+    """Entradas do skills.json para as skills do claude.ai, sem os nomes que uma fonte local ja traz (a local vale)."""
+    import codex_ambiente
+    vistos = set(codex_ambiente.skills_das_entradas(anteriores))     # a skill local de mesmo nome vale
+    saida = []
+    for pasta in pastas_do_claude_ai():
+        nomes = set(codex_ambiente.skills_das_entradas([{"path": pasta}]))
+        if not nomes - vistos:
+            continue
+        excluir = sorted(nomes & vistos)
+        saida.append({"path": p(pasta), **({"exclude": excluir} if excluir else {})})
+        vistos |= nomes
+    return saida
+
+
+def instalar_skills_grok(seco, mudou):
+    """O Grok le o ~/.claude/skills inteiro (inclusive as do claude.ai, em synced/) e os plugins do Claude, mas quando
+    um nome coincide com uma skill que ele traz (docx, pdf, pptx, xlsx...) usa a DELE. As do claude.ai entram por juncao
+    em ~/.grok/skills, que vem antes: o Grok usa a mesma versao que o Claude. A local de mesmo nome vale (nao entra)."""
+    import codex_ambiente
+    if not os.path.isfile(GROK_EXE):
+        return
+    nativas = set(os.listdir(os.path.join(CLAUDE, "skills"))) if os.path.isdir(os.path.join(CLAUDE, "skills")) else set()
+    entradas, _plugins = montar_skills_e_plugins()
+    pastas = [os.path.normcase(os.path.realpath(x)) for x in pastas_do_claude_ai()]
+    do_claude_ai = [e for e in entradas["entries"]
+                    if os.path.normcase(os.path.realpath(e["path"].replace("/", os.sep))) in pastas]
+    desejadas = {n: v for n, v in codex_ambiente.skills_das_entradas(do_claude_ai).items() if n not in nativas}
+    pasta = os.path.join(GROK, "skills")
+    codex_ambiente.aplicar_skills(pasta, codex_ambiente.plano_skills(pasta, desejadas, pastas_do_claude_ai()),
+                                  os.path.join(GROK, "skills-desativadas"), mudou, seco, rotulo="grok")
 
 
 def _eh_juncao(caminho):
@@ -98,11 +145,11 @@ def montar_mcp():
     atual = atual if isinstance(atual, dict) else {}
     servidores = atual.setdefault("mcpServers", {})
     for nome, cfg in (ler_json(os.path.join(HOME, ".claude.json"), {}).get("mcpServers") or {}).items():
-        if nome in servidores or not isinstance(cfg, dict) or cfg.get("type") == "sse":
+        if not isinstance(cfg, dict) or cfg.get("type") == "sse":
             continue
         novo = {k: cfg[k] for k in MCP_CHAVES if k in cfg}
         if "command" in novo or "url" in novo:
-            servidores[nome] = novo
+            servidores[nome] = novo           # o do Claude manda: definicao mudada la (token novo) muda aqui
     return atual
 
 
@@ -500,24 +547,34 @@ def montar_hooks_codex(atual):
     return novo
 
 
-def confiar_hooks_codex(seco, mudou):
-    """O Codex so roda hook marcado como confiavel. Marca os DESTA skill (o comando dela, o hash que o Codex mostra
-    agora), pela API oficial (config/value/write), sem tocar nos outros. Hook mudou = hash novo = marca de novo."""
-    import codex
-    if not codex.instalado():
-        return
+def _ajustes_de_hooks_codex(grupos, caminho, plugins_claude=()):
+    """O que gravar em hooks.state do Codex, a partir do hooks/list: os hooks do TagTeam (o comando dele, no
+    ~/.codex/hooks.json) e os dos plugins ligados no Claude (plugins_claude, ids "plugin@marketplace") marcados como
+    confiaveis com o hash de agora. No Claude os hooks dos plugins rodam sem perguntar; o ambiente do Codex e o mesmo."""
+    ajustes = {}
+    for h in (h for g in grupos for h in g.get("hooks") or [] if isinstance(h, dict) and isinstance(h.get("key"), str)):
+        comando = str(h.get("command", ""))
+        nosso = h.get("source") == "user" and GANCHO_CODEX in comando and \
+            os.path.normcase(os.path.realpath(str(h.get("sourcePath", "")))) == caminho
+        do_claude = h.get("source") == "plugin" and h.get("pluginId") in plugins_claude
+        if (nosso or do_claude) and h.get("trustStatus") != "trusted" and isinstance(h.get("currentHash"), str):
+            ajustes[h["key"]] = {"trusted_hash": h["currentHash"]}
+    return ajustes
+
+
+def ajustar_hooks_codex(srv, seco, mudou):
+    """O Codex so roda hook marcado como confiavel. Marca os do TagTeam e os dos plugins do Claude (o hash que o Codex
+    mostra agora), pela API oficial (config/value/write), sem tocar nos outros. Hook mudou = hash novo = marca de novo."""
+    import codex_ambiente
     caminho = os.path.normcase(os.path.realpath(os.path.join(CODEX_DIR, "hooks.json")))
-    with codex.Servidor() as srv:
-        grupos = (srv.chamar("hooks/list", {"cwds": [WS]}) or {}).get("data") or []
-        pendentes = {h["key"]: {"trusted_hash": h["currentHash"]} for g in grupos for h in g.get("hooks") or []
-                     if isinstance(h, dict) and h.get("source") == "user" and GANCHO_CODEX in str(h.get("command", ""))
-                     and os.path.normcase(os.path.realpath(str(h.get("sourcePath", "")))) == caminho
-                     and h.get("trustStatus") != "trusted" and isinstance(h.get("currentHash"), str)}
-        if not pendentes:
-            return
-        mudou.append("confianca dos hooks do Codex")
-        if not seco:
-            srv.chamar("config/value/write", {"keyPath": "hooks.state", "mergeStrategy": "upsert", "value": pendentes})
+    plugins_claude = {f"{p}@{m}" for p, m, _v, _pasta in codex_ambiente.plugins_do_claude()}
+    grupos = (srv.chamar("hooks/list", {"cwds": [WS]}) or {}).get("data") or []
+    ajustes = _ajustes_de_hooks_codex(grupos, caminho, plugins_claude)
+    if not ajustes:
+        return
+    mudou.append(f"codex hooks: {len(ajustes)} marcados como confiaveis")
+    if not seco:
+        srv.chamar("config/value/write", {"keyPath": "hooks.state", "mergeStrategy": "upsert", "value": ajustes})
 
 
 def montar_agents_codex(atual):
@@ -546,7 +603,12 @@ def instalar_codex_config(seco, mudou):
     hooks = None if atual is invalido else montar_hooks_codex(atual)    # arquivo que nao se entende: nao mexe
     if hooks is not None:
         gravar(caminho, hooks, seco, mudou)
-    confiar_hooks_codex(seco, mudou)
+    import codex
+    import codex_ambiente
+    entradas, _plugins = montar_skills_e_plugins()
+    with codex.Servidor() as srv:                  # um app-server para tudo: ambiente primeiro (plugin traz hook)
+        codex_ambiente.aplicar(srv, CODEX_DIR, WS, {"entradas": entradas["entries"]}, seco, mudou)
+        ajustar_hooks_codex(srv, seco, mudou)
 
 
 def main():
@@ -560,6 +622,7 @@ def main():
     copiar_grok_resume(a.seco, mudou)
     criar_atalhos_grok(a.seco, mudou)
     instalar_grok_config(a.seco, mudou)
+    instalar_skills_grok(a.seco, mudou)
     skills, plugins = montar_skills_e_plugins()
     gravar(os.path.join(GEMINI, "GEMINI.md"), montar_gemini_md(), a.seco, mudou)
     gravar(os.path.join(CONFIG, "skills.json"), skills, a.seco, mudou)

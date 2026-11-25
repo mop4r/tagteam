@@ -53,7 +53,7 @@ limit, the agent that is about to stop **writes a five-line handoff** so the nex
 | 🔁 **Four-way sync, both directions** | Claude Code ⇄ Gemini (Antigravity app **and** `agy` CLI) ⇄ Grok CLI ⇄ OpenAI Codex (app **and** CLI), through hooks — no command to remember. |
 | ▶️ **Native resume everywhere** | Sessions land in each tool's own storage: `claude --resume`, the Antigravity sidebar, `agy`, `grok --resume`, the Codex app and `codex resume`. |
 | 🤝 **Automatic handoff** | At 95% of the Claude limit (or the Gemini quota) a hook makes the agent write *Request / Done / In progress / Next step / Watch out* before stopping. |
-| 🧠 **Same brain in every tool** | Gemini and Grok read your `~/.claude/CLAUDE.md`, the same skills, the Claude plugins and your MCP servers — by reference, never copied. Codex gets a generated `AGENTS.md` block that points at the same rules. |
+| 🧠 **Same brain in every tool** | Gemini and Grok read your `~/.claude/CLAUDE.md`, the same skills, the Claude plugins and your MCP servers — by reference, never copied. Codex too: a generated `AGENTS.md` block, one junction per skill, Claude's plugins installed natively from Claude's own marketplaces, and the same MCP servers. |
 | 🛡️ **Never clobbers your work** | A conversation continued on the other side is never overwritten: a new version is created and yours stays. Mirrors never bounce back. |
 | 💻 **Multi-PC friendly** | Paths from another machine (other user, other drive) are remapped to this one; state is per PC. |
 | 🪶 **Zero dependencies** | Pure Python standard library (SQLite, protobuf parsing, TOML) + the official installers of each CLI. |
@@ -141,9 +141,10 @@ Test it without waiting for the limit: `set TAGTEAM_HANDOFF_THRESHOLD=10`.
 |---|---|---|---|
 | Conversations | ✅ both ways (app + CLI) | ✅ both ways | ✅ both ways (app + CLI) |
 | `~/.claude/CLAUDE.md` | ✅ via generated `~/.gemini/GEMINI.md` | ✅ loaded natively + `~/.grok/AGENTS.md` | ✅ via a generated block in `~/.codex/AGENTS.md` |
-| Skills (`~/.claude/skills`) | ✅ `config/skills.json` | ✅ native | — |
-| Claude plugins | ✅ skills + Antigravity-ready plugins | ✅ enabled in `config.toml` | — |
-| MCP servers (`~/.claude.json`) | ✅ `config/mcp_config.json` | ✅ remote servers in `config.toml` | — |
+| Skills (`~/.claude/skills`) | ✅ `config/skills.json` | ✅ native | ✅ one junction per skill in `~/.codex/skills` |
+| claude.ai account skills (`~/.claude/skills/synced`) | ✅ `config/skills.json` | ✅ junctions in `~/.grok/skills` (so Claude's docx/pdf/pptx/xlsx win over Grok's built-ins) | ✅ junctions |
+| Claude plugins | ✅ skills + Antigravity-ready plugins | ✅ enabled in `config.toml` | ✅ installed natively from Claude's local marketplaces (reinstalled when Claude's version changes) |
+| MCP servers (`~/.claude.json`) | ✅ `config/mcp_config.json` | ✅ remote servers in `config.toml` | ✅ `config.toml`, through Codex's config API |
 | Automatic handoff at the limit | ✅ (quota API) | ✋ manual — Grok doesn't expose usage outside its TUI | ✋ manual |
 | Resume picker shortcut | ✅ "Agy CLI --resume" | ✅ "Grok --resume" | ✅ "Codex --resume" |
 
@@ -155,7 +156,7 @@ python -I sincronizar.py                       # sync everything, every directio
 python -I sincronizar.py --direcao grok        # Claude -> Grok only   (antigravity | claude | grok | claude-de-grok | codex | claude-de-codex)
 python -I sincronizar.py --sessao <claude-id>  # one Claude session    (--cascade <gemini-id> / --grok <grok-id> / --codex <codex-id>)
 python -I sincronizar.py --forcar              # rewrite / recreate deleted copies (never a continued one)
-python -m unittest discover -p "test_*.py"     # 115 tests (the Codex ones run the real Codex in a throwaway folder)
+python -m unittest discover -p "test_*.py"     # 128 tests (the Codex ones run the real Codex in a throwaway folder)
 ```
 
 | Environment variable | Default | What it does |
