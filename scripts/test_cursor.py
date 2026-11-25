@@ -359,7 +359,7 @@ class TestApp(Base):
 
 class TestGancho(unittest.TestCase):
     def chamar(self, entrada):
-        with mock.patch.object(gancho, "lancar") as lancar, mock.patch.object(gancho, "deve_rodar", return_value=True), \
+        with mock.patch.object(gancho, "lancar") as lancar, mock.patch.object(gancho, "quando_rodar", return_value=("agora", 0)), \
                 mock.patch("sys.stdin", SimpleNamespace(buffer=io.BytesIO(json.dumps(entrada).encode()))):
             gancho_cursor.main()
         return lancar
@@ -368,7 +368,7 @@ class TestGancho(unittest.TestCase):
         aid = "11111111-1111-4111-8111-111111111111"
         for evento in ("sessionEnd", "stop"):
             lancar = self.chamar({"hook_event_name": evento, "conversation_id": aid})
-            lancar.assert_called_once_with(["--direcao", "claude-de-cursor", "--cursor", aid])
+            self.assertEqual(lancar.call_args.args[0], ["--direcao", "claude-de-cursor", "--cursor", aid])
 
     def test_id_invalido_ou_outro_evento_nao_lanca(self):
         self.chamar({"hook_event_name": "stop", "conversation_id": "../x"}).assert_not_called()

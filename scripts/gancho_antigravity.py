@@ -50,8 +50,7 @@ def main():
     if texto:
         gancho.liberar("agy-" + cascade)           # o Stop seguinte (com a passagem escrita) sincroniza na hora
         return json.dumps({"decision": "continue", "reason": texto}, ensure_ascii=False)
-    if gancho.deve_rodar("agy-" + cascade, time.time()):
-        gancho.lancar(["--direcao", "claude", "--cascade", cascade])
+    gancho.disparar("agy-" + cascade, ["--direcao", "claude", "--cascade", cascade], time.time())
     return "{}"
 
 

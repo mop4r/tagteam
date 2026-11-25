@@ -27,8 +27,11 @@ def main():
     conversa = str(entrada.get("conversation_id") or entrada.get("session_id") or "")
     if not ID_RE.match(conversa):
         return 0
-    if evento == "sessionend" or (evento == "stop" and gancho.deve_rodar("cursor-" + conversa, time.time())):
-        gancho.lancar(["--direcao", "claude-de-cursor", "--cursor", conversa])
+    args = ["--direcao", "claude-de-cursor", "--cursor", conversa]
+    if evento == "sessionend":
+        gancho.lancar(args)
+    elif evento == "stop":
+        gancho.disparar("cursor-" + conversa, args, time.time())
     return 0
 
 

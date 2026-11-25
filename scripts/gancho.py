@@ -18,6 +18,7 @@ AQUI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, AQUI)   # com python -I a pasta do script nao entra no caminho de import (passagem.py)
 SESSAO_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 INTERVALO_S = 120
+FOLGA_S = 5
 MAX_ENTRADA = 1024 * 1024
 MAX_LOG = 512 * 1024
 PASTA = os.path.join(tempfile.gettempdir(), "tagteam")
@@ -67,6 +68,39 @@ def deve_rodar(sessao, agora):
     return True
 
 
+def quando_rodar(chave, agora):
+    """("agora", 0), ("depois", segundos) ou (None, 0).
+
+    Respostas seguidas dentro do intervalo nao relancam na hora, mas a ULTIMA nao pode se perder: a primeira barrada
+    agenda uma rodada para o fim do intervalo (uma so por janela), que le a conversa ja com tudo. Sem isso, a resposta
+    final de uma conversa caia dentro da janela e nunca chegava as outras IAs."""
+    os.makedirs(PASTA, exist_ok=True)
+    marca = os.path.join(PASTA, f"ultimo-{chave}")
+    pendente = os.path.join(PASTA, f"pendente-{chave}")
+    if not os.path.exists(marca) or agora - os.path.getmtime(marca) >= INTERVALO_S:
+        _carimbar(marca, agora)
+        return "agora", 0
+    if os.path.exists(pendente) and os.path.getmtime(pendente) >= os.path.getmtime(marca):
+        return None, 0                                 # ja tem rodada marcada para o fim desta janela
+    _carimbar(pendente, agora)
+    return "depois", int(INTERVALO_S - (agora - os.path.getmtime(marca))) + FOLGA_S
+
+
+def _carimbar(caminho, agora):
+    with open(caminho, "w", encoding="utf-8") as f:
+        f.write(str(agora))
+    os.utime(caminho, (agora, agora))
+
+
+def disparar(chave, args, agora, script="sincronizar.py", esperar=False):
+    """Roda agora, agenda para o fim do intervalo, ou nada (ver quando_rodar)."""
+    quando, atraso = quando_rodar(chave, agora)
+    if quando == "agora":
+        lancar(args, script, esperar)
+    elif quando == "depois":
+        lancar(["--atraso", str(atraso), *args], script)
+
+
 def liberar(chave):
     """Tira a marca do intervalo: o proximo Stop sincroniza na hora (usado depois de pedir a passagem)."""
     marca = os.path.join(PASTA, f"ultimo-{chave}")
@@ -77,7 +111,9 @@ def liberar(chave):
 def main():
     gemini = os.path.join(os.path.expanduser("~"), ".gemini")
     tem_antigravity = any(os.path.isdir(os.path.join(gemini, n, "conversations")) for n in ("antigravity", "antigravity-cli")) \
-        or os.path.isdir(os.path.join(os.path.expanduser("~"), ".grok", "sessions"))     # ou o Grok
+        or os.path.isdir(os.path.join(os.path.expanduser("~"), ".grok", "sessions")) \
+        or os.path.isdir(os.path.join(os.path.expanduser("~"), ".codex")) \
+        or os.path.isdir(os.path.join(os.path.expanduser("~"), ".cursor", "chats"))      # ou Grok, Codex, Cursor
     try:
         # bytes + utf-8-sig: o stdin do Windows decodifica no codigo de pagina local, e o pipe do
         # PowerShell ainda poe BOM na frente; o Claude Code manda UTF-8 puro
@@ -93,9 +129,12 @@ def main():
     # nunca pede a passagem do Claude (o uso do limite do Claude nao vale para o Grok).
     sessao_grok = os.environ.get("GROK_SESSION_ID", "")
     if sessao_grok:
-        if SESSAO_RE.match(sessao_grok) and os.path.isdir(os.path.join(os.path.expanduser("~"), ".grok", "sessions")) and \
-                (evento == "SessionEnd" or (evento == "Stop" and deve_rodar("grok-" + sessao_grok, time.time()))):
-            lancar(["--direcao", "claude-de-grok", "--grok", sessao_grok], esperar=True)
+        if SESSAO_RE.match(sessao_grok) and os.path.isdir(os.path.join(os.path.expanduser("~"), ".grok", "sessions")):
+            args = ["--direcao", "claude-de-grok", "--grok", sessao_grok]
+            if evento == "SessionEnd":
+                lancar(args, esperar=True)
+            elif evento == "Stop":
+                disparar("grok-" + sessao_grok, args, time.time(), esperar=True)
         return 0
     if evento == "SessionStart":
         # sempre: num PC novo o instalar.py instala o agy e os atalhos; depois so grava o que mudou
@@ -112,8 +151,10 @@ def main():
             liberar(sessao)
             sys.stdout.write(json.dumps({"decision": "block", "reason": texto}, ensure_ascii=False))
             return 0
-    if evento == "SessionEnd" or (evento == "Stop" and deve_rodar(sessao, time.time())):
+    if evento == "SessionEnd":
         lancar(["--sessao", sessao])
+    elif evento == "Stop":
+        disparar(sessao, ["--sessao", sessao], time.time())
     return 0
 
 

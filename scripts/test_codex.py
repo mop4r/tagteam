@@ -491,7 +491,10 @@ class TestGanchoCodex(unittest.TestCase):
             # sleep proposital: espera com prazo o processo filho que o hook lancou terminar
             time.sleep(0.2)
         self.assertIn(f"--direcao claude-de-codex --codex {tid}", self.ler(log))
-        # segundo Stop dentro do intervalo nao relanca; SessionEnd lanca sempre
+        # segundo Stop dentro do intervalo, com a rodada do fim da janela ja agendada, nao relanca (o agendamento em
+        # si esta no test_gancho: aqui ele deixaria um processo esperando 2 min); SessionEnd lanca sempre
+        with open(os.path.join(temp, PASTA_GANCHO, f"pendente-codex-{tid}"), "w", encoding="utf-8") as f:
+            f.write("agendada")
         self.rodar({"hook_event_name": "Stop", "session_id": tid}, temp)
         self.assertEqual(self.ler(log).count("--codex"), 1)
         self.rodar({"hook_event_name": "SessionEnd", "session_id": tid}, temp)

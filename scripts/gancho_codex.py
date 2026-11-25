@@ -27,8 +27,11 @@ def main():
     conversa = str(entrada.get("session_id") or entrada.get("thread_id") or os.environ.get("CODEX_THREAD_ID", ""))
     if not ID_RE.match(conversa):
         return 0
-    if evento == "SessionEnd" or (evento == "Stop" and gancho.deve_rodar("codex-" + conversa, time.time())):
-        gancho.lancar(["--direcao", "claude-de-codex", "--codex", conversa])
+    args = ["--direcao", "claude-de-codex", "--codex", conversa]
+    if evento == "SessionEnd":
+        gancho.lancar(args)
+    elif evento == "Stop":
+        gancho.disparar("codex-" + conversa, args, time.time())
     return 0
 
 
