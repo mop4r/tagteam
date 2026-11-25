@@ -34,6 +34,9 @@ MAX_JSON = 20 * 1024 * 1024
 NOME_HOOK = "claude-sync"
 
 
+# powershell started from here never opens a window, even if the parent has no console (CREATE_NO_WINDOW).
+SEM_JANELA_PS = 0x08000000 if os.name == "nt" else 0
+
 def p(caminho):
     """Caminho absoluto com barras normais (os manifestos do Antigravity nao expandem ~)."""
     return os.path.abspath(caminho).replace("\\", "/")
@@ -200,7 +203,7 @@ def instalar_cli(seco, mudou):
         with os.fdopen(fd, "wb") as f:
             f.write(script)
         subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", tmp],
-                       check=False, capture_output=True, timeout=TIMEOUT_INSTALACAO_S)
+                       check=False, capture_output=True, timeout=TIMEOUT_INSTALACAO_S, creationflags=SEM_JANELA_PS)
     finally:
         os.remove(tmp)
     if not os.path.isfile(AGY):
@@ -232,7 +235,8 @@ def criar_atalhos(seco, mudou):
         r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File",
                             os.path.join(AQUI, "atalho.ps1"), "-Lnk", lnk, "-Alvo", alvo, "-Argumentos", args,
                             "-Pasta", WS, "-Icone", icone, "-Admin"],
-                           capture_output=True, text=True, timeout=60, check=False)
+                           capture_output=True, text=True, timeout=60, check=False,
+                           creationflags=SEM_JANELA_PS)
         if r.returncode != 0:
             raise RuntimeError(f"atalho {nome}: {r.stderr.strip()[:200]}")
         if "gravado" in r.stdout:
@@ -268,7 +272,7 @@ def instalar_grok(seco, mudou):
         with os.fdopen(fd, "wb") as f:
             f.write(script)
         subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", tmp],
-                       check=False, capture_output=True, timeout=TIMEOUT_INSTALACAO_S)
+                       check=False, capture_output=True, timeout=TIMEOUT_INSTALACAO_S, creationflags=SEM_JANELA_PS)
     finally:
         os.remove(tmp)
     if not os.path.isfile(GROK_EXE):
@@ -326,7 +330,8 @@ def criar_atalhos_grok(seco, mudou):
         r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File",
                             os.path.join(AQUI, "atalho.ps1"), "-Lnk", os.path.join(MENU, nome), "-Alvo", alvo,
                             "-Argumentos", args, "-Pasta", WS, "-Icone", icone, "-Admin"],
-                           capture_output=True, text=True, timeout=60, check=False)
+                           capture_output=True, text=True, timeout=60, check=False,
+                           creationflags=SEM_JANELA_PS)
         if r.returncode != 0:
             raise RuntimeError(f"atalho {nome}: {r.stderr.strip()[:200]}")
         if "gravado" in r.stdout:

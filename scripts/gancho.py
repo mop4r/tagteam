@@ -21,15 +21,18 @@ INTERVALO_S = 120
 MAX_ENTRADA = 1024 * 1024
 MAX_LOG = 512 * 1024
 PASTA = os.path.join(tempfile.gettempdir(), "tagteam")
-SEM_JANELA = 0x08000000 | 0x00000008          # CREATE_NO_WINDOW | DETACHED_PROCESS
+# CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP, with python.exe (a console app): the child gets a HIDDEN
+# console that grandchildren (powershell from instalar.py, git) inherit. Never DETACHED_PROCESS or pythonw:
+# with no console, every powershell the child runs opens a visible window of its own.
+SEM_JANELA = 0x08000000 | 0x00000200
 # O Grok poe o hook num job do Windows que nao deixa processo filho sair (CREATE_BREAKAWAY_FROM_JOB da
 # "Acesso negado") e encerra a arvore inteira quando o Grok sai: dentro dele a sincronizacao roda esperando.
 PRAZO_ESPERANDO_S = 60
 
 
 def _python_sem_janela():
-    w = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
-    return w if os.path.exists(w) else sys.executable
+    p = os.path.join(os.path.dirname(sys.executable), "python.exe")
+    return p if os.path.exists(p) else sys.executable
 
 
 def lancar(args, script="sincronizar.py", esperar=False):
