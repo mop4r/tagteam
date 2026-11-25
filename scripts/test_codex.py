@@ -251,6 +251,22 @@ def args(**kw):
     return SimpleNamespace(**base)
 
 
+class TestNomeNoCodex(unittest.TestCase):
+    def chamadas(self, atual, antigo, novo):
+        srv = mock.Mock()
+        sincronizar._atualizar_nome_codex(srv, "t1", atual, antigo, novo)
+        return srv.chamar.call_args_list
+
+    def test_troca_o_nome_que_nos_pusemos(self):
+        for atual, antigo in ((None, None), ("", None), ("Velho", "Velho"), ("Bug", None)):
+            self.assertEqual(self.chamadas(atual, antigo, "Bug (part 1, continued in another)"),
+                             [mock.call("thread/name/set", {"threadId": "t1", "name": "Bug (part 1, continued in another)"})])
+
+    def test_nome_trocado_a_mao_ou_igual_fica(self):
+        self.assertEqual(self.chamadas("Meu nome", "Velho", "Novo"), [])
+        self.assertEqual(self.chamadas("Novo", "Velho", "Novo"), [])
+
+
 class TestDecisoes(unittest.TestCase):
     """As regras do para_codex/codex_para_claude com o Codex simulado (o Codex de verdade fica no test_codex_real)."""
 

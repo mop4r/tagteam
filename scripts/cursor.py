@@ -10,6 +10,7 @@ Formato (medido no CLI 2026.11.22, 25/11/2026):
 - Conversa gravada aqui leva a marca meta('tagteam') = {"fonte": ..., "turnos": n}: espelho que ninguem continuou nao
   volta; turno a mais = continuada no Cursor.
 """
+import base64
 import hashlib
 import json
 import os
@@ -188,9 +189,42 @@ def ler_conversa(pasta):
 
 
 # ---------------------------------------------------------------- molde e gravacao
-def achar_molde():
+def achar_molde(guardado=None):
     """A conversa nativa (sem a marca) mais recente com ao menos um turno: dela vem o que o Cursor espera na raiz
-    (instrucoes do sistema, contexto, ferramentas). None se nao houver (o Pedro abre o CLI e manda um "oi")."""
+    (instrucoes do sistema, contexto, ferramentas). Achado, fica guardado no arquivo <guardado> (deste PC), que vale
+    quando nao houver nenhuma nativa (apagadas). None se nao houver nenhum dos dois (abrir o CLI e mandar um "oi")."""
+    molde = _molde_das_nativas()
+    if molde is not None and guardado:
+        _guardar_molde(molde, guardado)
+    return molde if molde is not None else (_ler_molde(guardado) if guardado else None)
+
+
+def _guardar_molde(molde, caminho):
+    b64 = lambda b: base64.b64encode(b).decode("ascii")   # noqa: E731
+    dados = {"cwd": molde["cwd"], "fixos": [b64(b) for b in molde["fixos"]],
+             "contexto": b64(molde["contexto"]) if molde.get("contexto") else None,
+             "raiz": [[c, t, v if t == 0 else b64(v)] for c, t, v in molde["raiz"]],
+             "turno_extra": [[c, t, v if t == 0 else b64(v)] for c, t, v in molde["turno_extra"]]}
+    os.makedirs(os.path.dirname(caminho), exist_ok=True)
+    with open(caminho + ".novo", "w", encoding="utf-8") as f:
+        json.dump(dados, f)
+    os.replace(caminho + ".novo", caminho)
+
+
+def _ler_molde(caminho):
+    try:
+        with open(caminho, encoding="utf-8") as f:
+            d = json.load(f)
+        de = base64.b64decode
+        campos = lambda xs: [[int(c), int(t), int(v) if int(t) == 0 else de(v)] for c, t, v in xs]   # noqa: E731
+        return {"cwd": str(d["cwd"]), "fixos": [de(b) for b in d["fixos"]],
+                "contexto": de(d["contexto"]) if d.get("contexto") else None,
+                "raiz": campos(d["raiz"]), "turno_extra": campos(d["turno_extra"])}
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def _molde_das_nativas():
     candidatas = []
     for pasta, _aid in conversas():
         try:

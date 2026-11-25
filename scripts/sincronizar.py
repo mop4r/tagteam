@@ -56,6 +56,7 @@ ETIQUETA = "claude"
 PC = re.sub(r"[^A-Za-z0-9_-]", "_", os.environ.get("COMPUTERNAME", "pc"))[:40]
 PASTA_ESTADO = os.environ.get("TAGTEAM_STATE_DIR") or os.path.join(os.path.expanduser("~"), ".tagteam")
 ESTADO = os.path.join(PASTA_ESTADO, f"estado-{PC}.json")
+MOLDE_CURSOR = os.path.join(PASTA_ESTADO, f"molde-cursor-{PC}.json")   # o Cursor exige partes de uma conversa nativa
 TRAVA = os.path.join(PASTA_ESTADO, f".trava-{PC}")
 # "home" so do app-server filho: copias enxutas das sessoes do Claude com a pasta deste PC (codex.preparar)
 PREPARO = os.path.join(PASTA_ESTADO, f"codex-preparo-{PC}")
@@ -553,6 +554,7 @@ def _importar_pendentes(estado, cont, srv, pendentes):
     feitos, falhas = codex.importar(srv, [(p["prep"], p["cwd"], p["titulo"]) for p in pendentes],
                                     a_cada_lote=_renovar_trava)
     regs = codex.registros()
+    nomes = None
     for p in pendentes:
         k = codex.normalizar(p["prep"])
         if k in falhas:
@@ -564,13 +566,28 @@ def _importar_pendentes(estado, cont, srv, pendentes):
             cont["c>x recusadas_pelo_codex"] += 1
             print(f"o Codex nao importou a sessao {p['sessao']} ({p['titulo']})", file=sys.stderr)
             continue
-        rec = {"id": tid, "versao": p["versao"], "fonte_tamanho": p["marca"][0], "fonte_mtime": p["marca"][1]}
+        antes = estado["importadas_codex"].get(p["sessao"]) or {}
+        if antes.get("id") == tid and p["titulo"] != antes.get("titulo"):   # conversa nova ja nasce com o nome
+            nomes = codex.listar(srv) if nomes is None else nomes
+            _atualizar_nome_codex(srv, tid, (nomes.get(tid) or {}).get("name"), antes.get("titulo"), p["titulo"])
+        rec = {"id": tid, "versao": p["versao"], "fonte_tamanho": p["marca"][0], "fonte_mtime": p["marca"][1],
+               "titulo": p["titulo"]}
         anteriores = [x for x in p["anteriores"] if isinstance(x, str) and ID_RE.match(x)][-50:]
         if anteriores:
             rec["anteriores"] = anteriores
         estado["importadas_codex"][p["sessao"]] = rec
         cont[p["rotulo"] if k in feitos else "c>x iguais"] += 1
     gravar_estado(estado)
+
+
+def _atualizar_nome_codex(srv, tid, atual, titulo_antigo, titulo):
+    """A importacao do Codex nao troca o nome de uma conversa que ja existe. Troca aqui quando o titulo do Claude mudou,
+    mas so se o nome no Codex ainda e o que nos pusemos (vazio, o titulo antigo, ou o comeco do novo): nome trocado a
+    mao no Codex fica."""
+    if atual == titulo:
+        return
+    if not atual or atual == titulo_antigo or titulo.startswith(atual):
+        srv.chamar("thread/name/set", {"threadId": tid, "name": titulo})
 
 
 # ---------------------------------------------------------------- Codex -> Claude
@@ -707,7 +724,7 @@ def para_cursor(a, estado, cont):
             if motivo:
                 cont["c>u " + motivo] += 1
                 continue
-            molde = molde or cursor.achar_molde()
+            molde = molde or cursor.achar_molde(MOLDE_CURSOR)
             if molde is None:
                 cont["c>u sem conversa nativa para molde"] += 1
                 return

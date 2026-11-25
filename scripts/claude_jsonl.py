@@ -82,10 +82,13 @@ def _resumo_ferramenta(bloco):
     return f"`[{nome}]` {desc}".rstrip()
 
 
+SUFIXO_CONTINUA = " (part 1, continued in another)"
+
+
 def ler_conversa(caminho, sessao):
     """Le o .jsonl linha a linha (arquivo pode estar sendo escrito) e monta os turnos."""
     conv = Conversa(sessao=sessao)
-    titulo_ia = titulo_proprio = ""
+    titulo_ia = titulo_proprio = continua_em = ""
     turnos = []
     with open(caminho, "rb") as f:
         for bruta in f:
@@ -103,6 +106,9 @@ def ler_conversa(caminho, sessao):
                 continue
             if tipo == "custom-title" and isinstance(o.get("customTitle"), str):
                 titulo_proprio = o["customTitle"]
+                continue
+            if tipo == "continued-in" and isinstance(o.get("continuedInSessionId"), str):
+                continua_em = o["continuedInSessionId"]       # o Claude Code seguiu esta conversa em outro arquivo
                 continue
             if tipo not in ("user", "assistant") or o.get("isSidechain") or o.get("isMeta"):
                 continue
@@ -153,4 +159,7 @@ def ler_conversa(caminho, sessao):
     primeiro = next((t.texto for t in turnos if t.papel == "usuario"), "")
     primeira_linha = primeiro.splitlines()[0] if primeiro else ""
     conv.titulo = (titulo_proprio or titulo_ia or primeira_linha or "Conversa do Claude").strip()[:80]
+    if continua_em:
+        # a continuacao tem o mesmo titulo: sem a marca, as outras IAs mostram duas iguais e a antiga parece cortada
+        conv.titulo = conv.titulo[:80 - len(SUFIXO_CONTINUA)].rstrip() + SUFIXO_CONTINUA
     return conv

@@ -112,6 +112,24 @@ class TestArmazenamento(Base):
         self.assertIn("D:\\\\outra", sistema)
         self.assertNotIn("Fulano", sistema)
 
+    def test_molde_guardado_vale_quando_as_nativas_somem(self):
+        guardado = os.path.join(self.raiz, "molde.json")
+        nativa(["x"], "11111111-1111-4111-8111-111111111111")
+        original = cursor.achar_molde(guardado)
+        shutil.rmtree(cursor.pasta_chats())
+        os.makedirs(cursor.pasta_chats())
+        self.assertIsNone(cursor.achar_molde())
+        self.assertEqual(cursor.achar_molde(guardado), original)
+        pasta = cursor.gravar_conversa(conversa(["y"]), CWD, cursor.achar_molde(guardado), cursor.id_para_sessao("s"),
+                                       "t", {})
+        self.assertEqual(cursor.ler_conversa(pasta).turnos[0].texto, "y")
+
+    def test_molde_guardado_quebrado_e_ignorado(self):
+        guardado = os.path.join(self.raiz, "molde.json")
+        with open(guardado, "w", encoding="utf-8") as f:
+            f.write("{lixo")
+        self.assertIsNone(cursor.achar_molde(guardado))
+
     def test_sem_nativa_nao_ha_molde(self):
         cursor.gravar_conversa(conversa(["y"]), CWD, MOLDE, cursor.id_para_sessao("s"), "t", {"fonte": "f"})
         self.assertIsNone(cursor.achar_molde())
@@ -150,7 +168,8 @@ class TestDecisoes(Base):
         self.projetos = os.path.join(self.raiz, "projects")
         os.makedirs(os.path.join(self.projetos, "C--w"))
         for nome, valor in (("PROJETOS", self.projetos), ("PASTA_ESTADO", self.raiz),
-                            ("ESTADO", os.path.join(self.raiz, "estado.json"))):
+                            ("ESTADO", os.path.join(self.raiz, "estado.json")),
+                            ("MOLDE_CURSOR", os.path.join(self.raiz, "molde-cursor.json"))):
             p = mock.patch.object(sincronizar, nome, valor)
             p.start()
             self.addCleanup(p.stop)

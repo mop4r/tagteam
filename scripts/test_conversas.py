@@ -56,6 +56,15 @@ class TestClaudeJsonl(unittest.TestCase):
         c = self.ler([linha(type="user", message={"content": "primeira\nsegunda"})])
         self.assertEqual(c.titulo, "primeira")
 
+    def test_conversa_que_continuou_em_outro_arquivo_ganha_marca_no_titulo(self):
+        # a continuacao tem o mesmo titulo; sem a marca as outras IAs mostram duas iguais e a antiga parece cortada
+        c = self.ler([linha(type="user", message={"content": "oi"}), linha(type="ai-title", aiTitle="T" * 80),
+                      linha(type="continued-in", continuedInSessionId="outra")])
+        self.assertTrue(c.titulo.endswith(claude_jsonl.SUFIXO_CONTINUA))
+        self.assertLessEqual(len(c.titulo), 80)
+        c = self.ler([linha(type="user", message={"content": "oi"}), linha(type="ai-title", aiTitle="Bug")])
+        self.assertEqual(c.titulo, "Bug")
+
     def test_pula_subagente_meta_e_comando_vira_texto(self):
         c = self.ler([
             linha(type="user", isSidechain=True, message={"content": "do subagente"}),
