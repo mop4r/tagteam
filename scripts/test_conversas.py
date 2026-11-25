@@ -475,9 +475,6 @@ class TestNenhumModuloComNomeDaBibliotecaPadrao(unittest.TestCase):
         self.assertEqual(sorted(nomes & set(sys.stdlib_module_names)), [])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 class TestTrava(unittest.TestCase):
     """Rodada que chega com outra em andamento espera a vez (antes desistia e a atualizacao se perdia)."""
 
@@ -501,18 +498,22 @@ class TestTrava(unittest.TestCase):
 
     def test_so_uma_igual_espera_e_prazo_acaba(self):
         self.assertTrue(sincronizar.pegar_trava())
-        fila = os.path.join(self.pasta, ".fila-x")
         resultado = {}
         t = self.threading.Thread(target=lambda: resultado.setdefault(
             "a", sincronizar.esperar_trava(["--sessao", "x"], prazo_s=0.6, pausa_s=0.05)))
         t.start()
-        time.sleep(0.15)
+        prazo = time.monotonic() + 5
+        while time.monotonic() < prazo and not [n for n in os.listdir(self.pasta) if n.startswith(".fila")]:
+            time.sleep(0.01)    # sleep proposital: espera, com prazo, a outra thread entrar na fila
         self.assertFalse(sincronizar.esperar_trava(["--sessao", "x"], prazo_s=5, pausa_s=0.05))   # ja tem uma igual
         t.join()
         self.assertFalse(resultado["a"])                                                           # prazo acabou
-        self.assertFalse(os.path.exists(fila))
+        self.assertEqual([n for n in os.listdir(self.pasta) if n.startswith(".fila")], [])
 
     def test_atraso_nao_conta_para_a_fila(self):
         self.assertEqual(sincronizar._argumentos_da_fila(["--atraso", "125", "--sessao", "x"]), ["--sessao", "x"])
         self.assertEqual(sincronizar._argumentos_da_fila(["--atraso=9", "--forcar"]), ["--forcar"])
 
+
+if __name__ == "__main__":
+    unittest.main()
