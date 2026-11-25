@@ -70,7 +70,10 @@ each AI syncs with Claude, and whatever just arrived from one side is relayed to
 - Grok runs hooks inside a **Windows job object that kills the whole process tree** when it exits and refuses
   `CREATE_BREAKAWAY_FROM_JOB`. A background child dies mid-sync (in `grok -p` the session ends right after the hook),
   so inside Grok the sync runs synchronously with a 60-second budget. One session takes 1–2 s; `Stop` is throttled to
-  once every 2 minutes per session.
+  once every 2 minutes per session; the first reply held back schedules one run for the end of the window (one per
+  window), so the last reply of a conversation is never lost.
+- One sync runs at a time (a lock file). A run that finds the lock taken waits up to 20 minutes for its turn, and only
+  one run waits per argument set: the others exit, since the waiting one reads everything once it starts.
 - `grok sessions list` shows the same list as the resume picker; `grok usage` only works inside the TUI, so there is
   no automatic handoff *from* Grok.
 

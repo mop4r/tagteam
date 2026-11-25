@@ -21,6 +21,7 @@
   <img src="https://img.shields.io/badge/Gemini_·_Antigravity-8B7CF6?style=flat-square&logo=googlegemini&logoColor=white" alt="Gemini Antigravity">
   <img src="https://img.shields.io/badge/Grok_CLI-111111?style=flat-square&logo=x&logoColor=white" alt="Grok CLI">
   <img src="https://img.shields.io/badge/OpenAI_Codex-10A37F?style=flat-square&logo=openai&logoColor=white" alt="OpenAI Codex">
+  <img src="https://img.shields.io/badge/Cursor-22B8CF?style=flat-square&logoColor=white" alt="Cursor">
   <a href="https://github.com/mop4r/tagteam/stargazers"><img src="https://img.shields.io/github/stars/mop4r/tagteam?style=flat-square&color=F4A481" alt="Stars"></a>
   <img src="https://img.shields.io/badge/PRs-welcome-3FB950?style=flat-square" alt="PRs welcome">
 </p>
@@ -108,7 +109,8 @@ flowchart LR
 - **Claude Code is the hub.** Each AI syncs with Claude; whatever just arrived from one of them is relayed to the
   others in the same run, so all five converge.
 - **Hooks do the work.** Claude Code (`SessionStart`, `Stop`, `SessionEnd`), Antigravity (`Stop`), Grok, Codex and Cursor
-  (`Stop`, `SessionEnd`) each call TagTeam after every reply — throttled to once every 2 minutes per conversation.
+  (`Stop`, `SessionEnd`) each call TagTeam after every reply — throttled to once every 2 minutes per conversation, and
+  the last reply inside that window is synced when it closes. A sync that finds another one running waits for its turn.
 - **Native formats.** Claude JSONL, Antigravity's per-conversation SQLite with protobuf steps (written through its
   local language server when the app is open), Grok's ACP `updates.jsonl` + `chat_history.jsonl`, and Codex through
   its own local API (`codex app-server`) and native session import — the app and the CLI share `~/.codex` — and Cursor's CLI chat store (content-addressed SQLite blobs with protobuf turns).
@@ -164,7 +166,7 @@ python -I sincronizar.py                       # sync everything, every directio
 python -I sincronizar.py --direcao grok        # Claude -> Grok only   (antigravity | claude | grok | claude-de-grok | codex | claude-de-codex | cursor | claude-de-cursor)
 python -I sincronizar.py --sessao <claude-id>  # one Claude session    (--cascade <gemini-id> / --grok <grok-id> / --codex <codex-id> / --cursor <cursor-id>)
 python -I sincronizar.py --forcar              # rewrite / recreate deleted copies (never a continued one)
-python -m unittest discover -p "test_*.py"     # 150+ tests (the Codex ones run the real Codex in a throwaway folder)
+python -m unittest discover -p "test_*.py"     # 170+ tests (the Codex ones run the real Codex in a throwaway folder)
 ```
 
 | Environment variable | Default | What it does |

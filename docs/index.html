@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TagTeam — Sync Claude Code, Gemini (Antigravity), Grok CLI &amp; OpenAI Codex Conversations</title>
+  <title>TagTeam — Sync Claude Code, Gemini (Antigravity), Grok CLI, OpenAI Codex &amp; Cursor Conversations</title>
   <meta name="description" content="Keep one coding conversation alive across Claude Code, Google Gemini (Antigravity app and agy CLI), Grok CLI and OpenAI Codex (app and CLI). Two-way native session sync, shared CLAUDE.md/skills/MCP, and automatic 95% usage-limit handoff.">
   <meta name="robots" content="index, follow">
   <meta name="google-site-verification" content="U5uMQXsDR6NnZyRHUvWsYW4ielVy_WCR8aLg48kAmsM">
@@ -19,17 +19,17 @@
 
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="TagTeam">
-  <meta property="og:title" content="TagTeam — One conversation, four AI coding agents">
-  <meta property="og:description" content="Sync Claude Code, Gemini (Antigravity / agy CLI), Grok CLI and OpenAI Codex sessions both ways with automatic usage-limit handoff notes. Local, zero dependencies, MIT.">
+  <meta property="og:title" content="TagTeam — One conversation, five AI coding agents">
+  <meta property="og:description" content="Sync Claude Code, Gemini (Antigravity / agy CLI), Grok CLI, OpenAI Codex and Cursor sessions both ways with automatic usage-limit handoff notes. Local, zero dependencies, MIT.">
   <meta property="og:url" content="https://mop4r.github.io/tagteam/">
   <meta property="og:image" content="https://mop4r.github.io/tagteam/assets/og-image.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="TagTeam banner: Claude Code, Gemini Antigravity, Grok CLI and OpenAI Codex sharing one conversation">
+  <meta property="og:image:alt" content="TagTeam banner: Claude Code, Gemini Antigravity, Grok CLI, OpenAI Codex and Cursor sharing one conversation">
 
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="TagTeam — Sync Claude Code, Gemini (Antigravity), Grok CLI &amp; Codex">
-  <meta name="twitter:description" content="Hit a Claude Code 5-hour usage limit? Tag out and continue the same session in Gemini Antigravity, Grok CLI or OpenAI Codex with automatic handoff.">
+  <meta name="twitter:title" content="TagTeam — Sync Claude Code, Gemini (Antigravity), Grok CLI, Codex &amp; Cursor">
+  <meta name="twitter:description" content="Hit a Claude Code 5-hour usage limit? Tag out and continue the same session in Gemini Antigravity, Grok CLI, OpenAI Codex or Cursor with automatic handoff.">
   <meta name="twitter:image" content="https://mop4r.github.io/tagteam/assets/og-image.png">
 
   <link rel="stylesheet" href="styles.css">
@@ -43,11 +43,11 @@
         "name": "TagTeam",
         "applicationCategory": "DeveloperApplication",
         "operatingSystem": "Windows 10, Windows 11",
-        "softwareVersion": "0.1.0",
+        "softwareVersion": "0.2.0",
         "license": "https://opensource.org/licenses/MIT",
         "url": "https://mop4r.github.io/tagteam/",
         "codeRepository": "https://github.com/mop4r/tagteam",
-        "description": "Local two-way conversation sync and automatic usage-limit handoff between Claude Code, Google Gemini (Antigravity desktop app and agy CLI), xAI Grok CLI, and OpenAI Codex (desktop app and CLI).",
+        "description": "Local two-way conversation sync and automatic usage-limit handoff between Claude Code, Google Gemini (Antigravity desktop app and agy CLI), xAI Grok CLI, OpenAI Codex (desktop app and CLI) and Cursor (CLI and app).",
         "offers": {
           "@type": "Offer",
           "price": "0",
@@ -107,7 +107,7 @@
 
   <main class="wrap">
     <section class="hero" style="border-top: none;">
-      <h1>One conversation across Claude Code, Gemini, Grok CLI and OpenAI Codex.</h1>
+      <h1>One conversation across Claude Code, Gemini, Grok CLI, OpenAI Codex and Cursor.</h1>
       <p class="lead">
         When a 5-hour usage limit hits mid-refactor, switch tools without starting over.
         TagTeam mirrors your real native sessions both ways and writes a five-line handoff note before stopping.
@@ -117,6 +117,7 @@
         <li><span class="dot dot-gemini" aria-hidden="true"></span>Gemini · Antigravity &amp; agy CLI</li>
         <li><span class="dot dot-grok" aria-hidden="true"></span>Grok CLI</li>
         <li><span class="dot dot-codex" aria-hidden="true"></span>OpenAI Codex · app &amp; CLI</li>
+        <li><span class="dot dot-cursor" aria-hidden="true"></span>Cursor · CLI &amp; app</li>
       </ul>
       <div class="actions">
         <a class="btn btn-primary" href="#install">Install on Windows</a>
@@ -132,7 +133,7 @@
 
     <section id="install">
       <h2>Install in a few commands</h2>
-      <p>Requires Windows 10/11, Python 3.11+ and Claude Code. The installer sets up hooks, mirrors your environment, and installs the official <code>agy</code>, <code>grok</code> and <code>codex</code> CLIs if missing.</p>
+      <p>Requires Windows 10/11, Python 3.11+ and Claude Code. The installer sets up hooks, mirrors your environment, and installs the official <code>agy</code>, <code>grok</code> and <code>codex</code> CLIs if missing (Cursor is detected when installed).</p>
       <div class="code-block">
         <button class="copy-btn" type="button" data-copy="install-cmd">Copy</button>
         <pre id="install-cmd">git clone https://github.com/mop4r/tagteam "$HOME\.claude\skills\tagteam"
@@ -141,12 +142,12 @@ agy
 grok
 codex</pre>
       </div>
-      <p>Sign in once to <code>agy</code>, <code>grok</code> and <code>codex</code>, then keep working as usual. Every session shows up natively in <code>claude --resume</code>, the Antigravity sidebar, the <code>Agy CLI --resume</code> picker, <code>Grok --resume</code>, the Codex app and <code>Codex --resume</code>.</p>
+      <p>Sign in once to <code>agy</code>, <code>grok</code>, <code>codex</code> and <code>cursor-agent</code>, then keep working as usual. Every session shows up natively in <code>claude --resume</code>, the Antigravity sidebar, the <code>Agy CLI --resume</code> picker, <code>Grok --resume</code>, the Codex app, <code>Codex --resume</code> and <code>Cursor CLI --resume</code>.</p>
 
       <ul class="feature-list">
         <li>
-          <strong>Four-way native sync</strong>
-          <span>Claude JSONL, Antigravity SQLite + protobuf (desktop app and CLI), Grok ACP JSONL and OpenAI Codex (through its official local app-server API) stay in sync through hooks.</span>
+          <strong>Five-way native sync</strong>
+          <span>Claude JSONL, Antigravity SQLite + protobuf (desktop app and CLI), Grok ACP JSONL, OpenAI Codex (through its official local app-server API) and the Cursor chat store stay in sync through hooks.</span>
         </li>
         <li>
           <strong>Automatic 95% limit handoff</strong>
@@ -154,7 +155,7 @@ codex</pre>
         </li>
         <li>
           <strong>Same rules, skills and MCP servers</strong>
-          <span>Gemini and Grok reference your <code>~/.claude/CLAUDE.md</code>, skills, plugins, and MCP servers without duplicating files.</span>
+          <span>Gemini, Grok, Codex and Cursor use your <code>~/.claude/CLAUDE.md</code>, skills, plugins, and MCP servers without duplicating files.</span>
         </li>
         <li>
           <strong>Conflict-safe and 100% local</strong>
@@ -173,6 +174,7 @@ codex</pre>
               <th>Gemini (Antigravity / agy)</th>
               <th>Grok CLI</th>
               <th>OpenAI Codex</th>
+              <th>Cursor</th>
             </tr>
           </thead>
           <tbody>
@@ -181,29 +183,34 @@ codex</pre>
               <td>Both ways (desktop app + CLI)</td>
               <td>Both ways</td>
               <td>Both ways (app + CLI)</td>
+              <td>Both ways (<code>cursor-agent</code>); app chats come back too</td>
             </tr>
             <tr>
               <td><code>~/.claude/CLAUDE.md</code></td>
               <td>Referenced from generated <code>~/.gemini/GEMINI.md</code></td>
               <td>Loaded natively + <code>~/.grok/AGENTS.md</code></td>
               <td>Block in <code>~/.codex/AGENTS.md</code></td>
+              <td>Loaded natively</td>
             </tr>
             <tr>
               <td>Skills (<code>~/.claude/skills</code>)</td>
               <td><code>config/skills.json</code></td>
               <td>Native</td>
-              <td>—</td>
+              <td>One junction per skill in <code>~/.codex/skills</code></td>
+              <td>Native (+ claude.ai skills as junctions)</td>
             </tr>
             <tr>
               <td>Plugins &amp; MCP servers</td>
               <td><code>config/plugins.json</code> &amp; <code>mcp_config.json</code></td>
               <td>Enabled in <code>config.toml</code></td>
-              <td>—</td>
+              <td>Installed natively; MCP through Codex's config API</td>
+              <td>Plugins native; MCP in <code>~/.cursor/mcp.json</code></td>
             </tr>
             <tr>
               <td>Automatic handoff at 95%</td>
               <td>Yes (via local quota API)</td>
               <td>Manual (Grok CLI has no non-TUI usage API yet)</td>
+              <td>Manual</td>
               <td>Manual</td>
             </tr>
             <tr>
@@ -211,6 +218,7 @@ codex</pre>
               <td><code>Agy CLI --resume</code> shortcut</td>
               <td><code>Grok --resume</code> shortcut</td>
               <td><code>Codex --resume</code> shortcut</td>
+              <td><code>Cursor CLI --resume</code> shortcut</td>
             </tr>
           </tbody>
         </table>
@@ -253,7 +261,7 @@ codex</pre>
 
   <footer>
     <div class="wrap footer-inner">
-      <span>TagTeam — MIT License. Independent open-source project, not affiliated with Anthropic, Google or xAI.</span>
+      <span>TagTeam — MIT License. Independent open-source project, not affiliated with Anthropic, Google, xAI, OpenAI or Anysphere (Cursor).</span>
       <span>
         <a href="https://github.com/mop4r/tagteam">GitHub</a> ·
         <a href="https://github.com/mop4r/tagteam/releases">Releases</a> ·

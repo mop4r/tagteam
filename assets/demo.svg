@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 540" width="1200" height="540" role="img" aria-labelledby="t d">
 <title id="t">TagTeam demo</title>
-<desc id="d">Claude Code hits 95% of its usage limit and writes a handoff; Gemini picks the same conversation up and finishes the step; Grok continues it, and the result is back in Claude Code.</desc>
+<desc id="d">Claude Code hits 95% of its usage limit and writes a handoff; Gemini picks the same conversation up and finishes the step; Grok continues it, and the result is back in Claude Code. OpenAI Codex and Cursor get the same conversation too.</desc>
 <defs><linearGradient id="fundo" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0B0F19"/><stop offset="1" stop-color="#17132B"/></linearGradient></defs>
 <rect width="1200" height="540" rx="24" fill="url(#fundo)"/>
 <g font-family="ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace">
@@ -41,5 +41,5 @@
 <g><animate attributeName="opacity" values="0;1" keyTimes="0;0.3533" calcMode="discrete" dur="15.0s" repeatCount="indefinite"/><circle cx="405" cy="250" r="26" fill="#F4A481"/><text x="405" y="256" text-anchor="middle" font-size="15" font-weight="800" fill="#0B0F19">tag!</text></g>
 <g><animate attributeName="opacity" values="0;1" keyTimes="0;0.6267" calcMode="discrete" dur="15.0s" repeatCount="indefinite"/><circle cx="795" cy="250" r="26" fill="#F4A481"/><text x="795" y="256" text-anchor="middle" font-size="15" font-weight="800" fill="#0B0F19">tag!</text></g>
 </g>
-<g font-family="ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" fill="#9AA4B2"><text x="600" y="506" text-anchor="middle">Same conversation everywhere · <tspan fill="#F4A481">claude --resume</tspan> · <tspan fill="#C9B8FF">agy</tspan> · <tspan fill="#E6EDF3">grok --resume</tspan></text></g>
+<g font-family="ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" fill="#9AA4B2"><text x="600" y="506" text-anchor="middle">Same conversation everywhere · <tspan fill="#F4A481">claude --resume</tspan> · <tspan fill="#C9B8FF">agy</tspan> · <tspan fill="#E6EDF3">grok --resume</tspan> · <tspan fill="#6EE7C1">codex resume</tspan> · <tspan fill="#8BE4F2">cursor-agent --resume</tspan></text></g>
 </svg>

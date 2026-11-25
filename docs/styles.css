@@ -9,6 +9,7 @@
   --gemini: #8b7cf6;
   --grok: #c9d1d9;
   --codex: #10a37f;
+  --cursor: #22b8cf;
   --ok: #3fb950;
   --radius: 10px;
   --mono: ui-monospace, "Cascadia Code", Consolas, "Liberation Mono", Menlo, monospace;
@@ -183,6 +184,10 @@ a:hover {
 
 .dot-codex {
   background: var(--codex);
+}
+
+.dot-cursor {
+  background: var(--cursor);
 }
 
 .actions {
