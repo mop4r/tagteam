@@ -90,6 +90,9 @@ class TestRodar(unittest.TestCase):
             run.side_effect = subprocess.TimeoutExpired("x", 5, output=b"meio")
             self.assertEqual(rodar.main(["--prazo", "5", "sincronizar.py"]), 124)
         self.assertEqual(run.call_args.kwargs["timeout"], 5)
+        with mock.patch.object(rodar, "LOG", log), mock.patch.object(rodar.subprocess, "run", return_value=r) as run:
+            rodar.main(["sincronizar.py"])
+        self.assertEqual(run.call_args.kwargs["timeout"], rodar.PRAZO_PADRAO_S)    # nunca sem prazo
         with open(log, encoding="utf-8") as f:
             texto = f.read()
         self.assertRegex(texto, r"--- .* sincronizar.py --sessao abc\nlinha 1\naviso\n")
