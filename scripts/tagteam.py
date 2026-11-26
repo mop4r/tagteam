@@ -26,7 +26,7 @@ SKILL = os.path.dirname(AQUI)
 ATUALIZA_S = 2.0
 PRAZO_SIMULAR_S = 600
 NIVEL_COR = {"ok": "verde", "aviso": "amarelo", "erro": "vermelho", "info": "ciano"}
-NIVEL_ROTULO = {"ok": "OK", "aviso": "AVISO", "erro": "ERRO", "info": "INFO"}
+NIVEL_ROTULO = {"ok": ("OK", "OK"), "aviso": ("AVISO", "WARNING"), "erro": ("ERRO", "ERROR"), "info": ("INFO", "INFO")}
 LOGIN = {"antigravity": ("agy",), "grok": ("grok",), "codex": ("codex", "login"), "cursor": ("cursor-agent", "login")}
 
 TEXTOS = {
@@ -106,6 +106,9 @@ TEXTOS = {
     "abrir_log": ("Log aberto: {x}", "Log opened: {x}"),
     "sem_log": ("Ainda não há log.", "No log yet."),
     "tudo_certo": ("tudo certo", "all good"),
+    "erro_ev": ("erro: ", "error: "),
+    "legenda": ("→ do Claude para a IA · ← da IA para o Claude · hook: última chamada neste PC",
+                "→ from Claude to the AI · ← from the AI to Claude · hook: last call on this PC"),
     "atencao": ("{n} ponto(s) de atenção", "{n} item(s) need attention"),
     "erros_n": ("{n} erro(s)", "{n} error(s)"),
     "mudancas_n": ("{n} mudança(s)", "{n} change(s)"),
@@ -238,8 +241,9 @@ def tela_opcoes(cfg):
     while True:
         itens = _linhas_opcoes(cfg)
         linhas = [cor(t("titulo"), "negrito"), "", cor(t("opcoes"), "negrito"), ""]
+        largura = max(len(r) for _c, r, _v in itens) + 2
         for i, (_c, rotulo, valor) in enumerate(itens):
-            texto = f"  {rotulo:<62} {valor}"
+            texto = f"  {rotulo:<{largura}} {valor}"
             linhas.append(cor(texto, "inverso") if i == pos else texto)
         linhas += ["", cor(t("teclas_opcoes"), "fraco")]
         tela.Tela.desenhar(linhas)
@@ -292,7 +296,7 @@ def rodar_instalador(extra=()):
             continue
         total = p.get("total") or total
         if p.get("estado") == "rodando":
-            atual = p.get("titulo", "")
+            atual = titulo_do_passo(p)
         else:
             feitos.append(p)
         _desenhar_progresso(feitos, atual, total, time.monotonic() - inicio)
@@ -314,12 +318,16 @@ def _linhas_progresso(feitos, atual, total, decorrido):
         estado = str(p.get("estado", ""))
         marca = cor("✓", "verde") if estado == "ok" else cor("✗", "vermelho")
         detalhe = f" ({len(p.get('mudou') or [])})" if p.get("mudou") else ""
-        linhas.append(f"  {marca} {p.get('titulo', '')}{cor(detalhe, 'fraco')}")
+        linhas.append(f"  {marca} {titulo_do_passo(p)}{cor(detalhe, 'fraco')}")
         if estado != "ok":
             linhas.append(cor(f"      {estado[:150]}", "vermelho"))
     if atual:
         linhas.append(f"  {cor('…', 'ciano')} {atual}")
     return linhas
+
+
+def titulo_do_passo(p):
+    return str(p.get("title") if IDIOMA == "en" and p.get("title") else p.get("titulo", ""))
 
 
 def _desenhar_progresso(feitos, atual, total, decorrido):
@@ -428,7 +436,7 @@ def _linha_evento(e, agora):
     mudou = sum(v for k, v in cont.items() if isinstance(v, int) and k.split()[-1] in
                 ("novas", "atualizadas", "versao_nova", "exportadas", "importadas"))
     if e.get("saida") not in (0, None) or cont.get("erro"):
-        resultado = cor("erro: " + ((e.get("erros") or ["?"])[-1])[:90], "vermelho")
+        resultado = cor(t("erro_ev") + ((e.get("erros") or ["?"])[-1])[:90], "vermelho")
     elif e.get("tipo") != "sincronizar":
         resultado = t("arquivos_n", n=len(e.get("mudou") or []))
     else:
@@ -443,10 +451,12 @@ def linhas_monitor(p):
     topo = cor("● " + t("tudo_certo"), "verde") if not geral else cor("● " + t("atencao", n=len(geral)), "amarelo")
     linhas = [f"{cor(t('titulo'), 'negrito')}  v{VERSAO}", f"{cor(t('monitor'), 'negrito')} · {topo}", ""]
     linhas += [_linha_ia(p["ias"][ia], agora) for ia in config.IAS]
+    linhas.append(cor("  " + t("legenda"), "fraco"))
     r = p["resumo"]
     linhas += ["", "  " + t("rodadas_24h", r=r["rodadas"], m=r["mudou"], e=r["com_erro"]), ""]
     for assunto, nivel, msg, kw in p["checagens"]:
-        linhas.append(f"  {cor(NIVEL_ROTULO[nivel], NIVEL_COR[nivel])} {saude.assunto(assunto, IDIOMA)}: "
+        rotulo = NIVEL_ROTULO[nivel][0 if IDIOMA == "pt" else 1]
+        linhas.append(f"  {cor(rotulo, NIVEL_COR[nivel])} {saude.assunto(assunto, IDIOMA)}: "
                       f"{saude.texto(msg, IDIOMA, **kw)}")
     linhas += ["", cor(t("ultimas"), "negrito")]
     eventos = [e for e in p["eventos"] if e.get("tipo") in ("sincronizar", "instalar", "desinstalar")][-8:]

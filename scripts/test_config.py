@@ -297,5 +297,9 @@ class TestInstalarObedece(ComEstado):
         self.assertTrue(cfg["conversas"]["grok"])
 
 
+    def test_todo_passo_tem_titulo_em_ingles(self):
+        self.assertEqual([t for _ia, t, _f in instalar.PASSOS if t not in instalar.TITULOS_EN], [])
+
+
 if __name__ == "__main__":
     unittest.main()

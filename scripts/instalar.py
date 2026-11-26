@@ -916,6 +916,23 @@ PASSOS = (
     ("cursor", "Ambiente e hook do Cursor", instalar_cursor_config),
     ("tagteam", "Atalho do monitor TagTeam", criar_atalho_tagteam),
 )
+TITULOS_EN = {
+    "Hooks e status line do Claude Code": "Claude Code hooks and status line",
+    "CLI agy (instalador oficial)": "agy CLI (official installer)",
+    "Atalhos do Antigravity": "Antigravity shortcuts",
+    "Ambiente do Claude no Antigravity": "Claude environment in Antigravity",
+    "Hook de conversas do Antigravity": "Antigravity chat hook",
+    "Grok CLI (instalador oficial)": "Grok CLI (official installer)",
+    "Seletor de conversas do Grok": "Grok session picker",
+    "Atalhos do Grok": "Grok shortcuts",
+    "Ambiente e hook do Grok": "Grok environment and hook",
+    "Codex CLI (instalador oficial)": "Codex CLI (official installer)",
+    "Atalhos do Codex": "Codex shortcuts",
+    "Ambiente e hook do Codex": "Codex environment and hook",
+    "Atalhos do Cursor": "Cursor shortcuts",
+    "Ambiente e hook do Cursor": "Cursor environment and hook",
+    "Atalho do monitor TagTeam": "TagTeam monitor shortcut",
+}
 ERROS_DE_PASSO = (OSError, RuntimeError, ValueError, TimeoutError)
 
 
@@ -943,7 +960,8 @@ def rodar_passos(seco, aviso=None):
 
 
 def _aviso_json(i, total, ia, titulo, estado, mudou):
-    print(json.dumps({"passo": i, "total": total, "ia": ia, "titulo": titulo, "estado": estado,
+    print(json.dumps({"passo": i, "total": total, "ia": ia, "titulo": titulo, "title": TITULOS_EN.get(titulo, titulo),
+                      "estado": estado,
                       "mudou": mudou[:50]}, ensure_ascii=False), flush=True)
 
 
