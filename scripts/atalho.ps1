@@ -25,10 +25,10 @@ $s.Arguments = $Argumentos
 $s.WorkingDirectory = $Pasta
 if ($Icone -ne "") { $s.IconLocation = $Icone }
 $s.Save()
-if ($Admin) {
-    # "Executar como administrador": bit 0x20 do byte 0x15 do cabecalho do .lnk (o COM nao expoe isso)
-    $bytes = [IO.File]::ReadAllBytes($Lnk)
-    $bytes[0x15] = $bytes[0x15] -bor 0x20
-    [IO.File]::WriteAllBytes($Lnk, $bytes)
-}
+# "Executar como administrador": bit 0x20 do byte 0x15 do cabecalho do .lnk (o COM nao expoe isso). Liga ou
+# desliga conforme o pedido: o Save() do COM mantem o bit de um atalho que ja existia.
+$bytes = [IO.File]::ReadAllBytes($Lnk)
+$antes = $bytes[0x15]
+if ($Admin) { $bytes[0x15] = $bytes[0x15] -bor 0x20 } else { $bytes[0x15] = $bytes[0x15] -band 0xDF }
+if ($bytes[0x15] -ne $antes) { [IO.File]::WriteAllBytes($Lnk, $bytes) }
 "gravado"

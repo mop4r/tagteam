@@ -142,7 +142,7 @@ public static class GrokResume
     static volatile bool stop;
     static int injected;
 
-    static int Main()
+    static int Main(string[] args)
     {
         string here = Path.GetDirectoryName(typeof(GrokResume).Assembly.Location);
         string grok = Path.Combine(here, "bin", "grok.exe");
@@ -162,7 +162,9 @@ public static class GrokResume
 
         var si = new STARTUPINFO();
         si.cb = Marshal.SizeOf(typeof(STARTUPINFO));
-        string cmd = "\"" + grok + "\" --always-approve";
+        // so a flag conhecida passa adiante (o atalho decide se o Grok pede aprovacao); nada mais vai para a linha
+        bool livre = Array.IndexOf(args, "--always-approve") >= 0;
+        string cmd = "\"" + grok + "\"" + (livre ? " --always-approve" : "");
         PROCESS_INFORMATION pi;
         // Caminho fixo, sem shell. Suspenso ate entrar no job, para nao ficar solto.
         bool ok = CreateProcess(grok, cmd, IntPtr.Zero, IntPtr.Zero, false, CREATE_SUSPENDED, IntPtr.Zero, null, ref si, out pi);

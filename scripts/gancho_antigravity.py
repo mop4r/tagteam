@@ -42,7 +42,8 @@ def main():
     if not isinstance(entrada, dict):
         return "{}"
     cascade = str(entrada.get("conversationId", ""))
-    if not ID_RE.match(cascade):
+    gancho.anotar("antigravity", "Stop")
+    if not ID_RE.match(cascade) or not gancho.ia_marcada("antigravity"):
         return "{}"
     import passagem
     texto = passagem.decidir_gemini(cascade, bool(entrada.get("continuationActive")),

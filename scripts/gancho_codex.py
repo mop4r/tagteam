@@ -25,7 +25,8 @@ def main():
         return 0
     evento = str(entrada.get("hook_event_name", ""))
     conversa = str(entrada.get("session_id") or entrada.get("thread_id") or os.environ.get("CODEX_THREAD_ID", ""))
-    if not ID_RE.match(conversa):
+    gancho.anotar("codex", evento)
+    if not ID_RE.match(conversa) or not gancho.ia_marcada("codex"):
         return 0
     args = ["--direcao", "claude-de-codex", "--codex", conversa]
     if evento == "SessionEnd":

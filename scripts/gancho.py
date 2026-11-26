@@ -108,12 +108,40 @@ def liberar(chave):
         os.remove(marca)
 
 
+def anotar(ia, evento):
+    """Carimbo da ultima chamada do hook de cada IA (o monitor mostra "hook chamado ha X min"). So o nome do evento."""
+    try:
+        os.makedirs(PASTA, exist_ok=True)
+        with open(os.path.join(PASTA, f"gancho-{ia}.txt"), "w", encoding="utf-8") as f:
+            f.write(re.sub(r"[^A-Za-z]", "", str(evento))[:30])
+    except OSError:
+        return          # o carimbo e so diagnostico: falhar ao gravar nunca quebra o hook
+
+
+def ia_marcada(ia):
+    """A IA esta marcada para sincronizar conversas no config.json (sem o arquivo: todas)."""
+    import config
+    return config.conversas(config.carregar(), ia)
+
+
+PASTAS_DAS_IAS = {"antigravity": (os.path.join(".gemini", "antigravity", "conversations"),
+                                  os.path.join(".gemini", "antigravity-cli", "conversations")),
+                  "grok": (os.path.join(".grok", "sessions"),), "codex": (".codex",),
+                  "cursor": (os.path.join(".cursor", "chats"),)}
+
+
+def ha_ia_para_sincronizar(cfg):
+    """Alguma IA marcada para conversas esta instalada neste PC."""
+    import config
+    casa = os.path.expanduser("~")
+    return any(config.conversas(cfg, ia) and any(os.path.isdir(os.path.join(casa, x)) for x in pastas)
+               for ia, pastas in PASTAS_DAS_IAS.items())
+
+
 def main():
-    gemini = os.path.join(os.path.expanduser("~"), ".gemini")
-    tem_antigravity = any(os.path.isdir(os.path.join(gemini, n, "conversations")) for n in ("antigravity", "antigravity-cli")) \
-        or os.path.isdir(os.path.join(os.path.expanduser("~"), ".grok", "sessions")) \
-        or os.path.isdir(os.path.join(os.path.expanduser("~"), ".codex")) \
-        or os.path.isdir(os.path.join(os.path.expanduser("~"), ".cursor", "chats"))      # ou Grok, Codex, Cursor
+    import config
+    cfg = config.carregar()
+    tem_antigravity = ha_ia_para_sincronizar(cfg)      # o nome ficou de quando so havia o Antigravity
     try:
         # bytes + utf-8-sig: o stdin do Windows decodifica no codigo de pagina local, e o pipe do
         # PowerShell ainda poe BOM na frente; o Claude Code manda UTF-8 puro
@@ -129,13 +157,16 @@ def main():
     # nunca pede a passagem do Claude (o uso do limite do Claude nao vale para o Grok).
     sessao_grok = os.environ.get("GROK_SESSION_ID", "")
     if sessao_grok:
-        if SESSAO_RE.match(sessao_grok) and os.path.isdir(os.path.join(os.path.expanduser("~"), ".grok", "sessions")):
+        anotar("grok", evento)
+        if SESSAO_RE.match(sessao_grok) and config.conversas(cfg, "grok") and \
+                os.path.isdir(os.path.join(os.path.expanduser("~"), ".grok", "sessions")):
             args = ["--direcao", "claude-de-grok", "--grok", sessao_grok]
             if evento == "SessionEnd":
                 lancar(args, esperar=True)
             elif evento == "Stop":
                 disparar("grok-" + sessao_grok, args, time.time(), esperar=True)
         return 0
+    anotar("claude", evento)
     if evento == "SessionStart":
         # sempre: num PC novo o instalar.py instala o agy e os atalhos; depois so grava o que mudou
         lancar([], "instalar.py")

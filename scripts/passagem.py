@@ -1,8 +1,8 @@
 """Passagem automatica perto do limite: o agente que vai parar escreve onde o trabalho esta, para o outro seguir.
 
 Claude Code: o status line (statusline.py) grava o uso dos limites de 5 h e 7 dias; o hook Stop le e, a partir
-de LIMIAR %, bloqueia uma vez ("decision": "block") pedindo a passagem.
-Antigravity: o hook Stop consulta a cota no servidor local (RetrieveUserQuotaSummary) e, a partir de LIMIAR %,
+do limiar (config.json), bloqueia uma vez ("decision": "block") pedindo a passagem.
+Antigravity: o hook Stop consulta a cota no servidor local (RetrieveUserQuotaSummary) e, a partir do limiar,
 pede a passagem uma vez ("decision": "continue").
 Uma vez por conversa e por janela de limite (marca com a hora de renovacao). A passagem fica na propria conversa
 e a sincronizacao a leva para o outro lado.
@@ -12,16 +12,14 @@ import os
 import re
 import time
 
-def _limiar():
-    """% do limite usado a partir da qual pede a passagem. TAGTEAM_HANDOFF_THRESHOLD (1 a 100) troca, para testar."""
-    try:
-        v = float(os.environ.get("TAGTEAM_HANDOFF_THRESHOLD", "95"))
-    except ValueError:
-        return 95.0
-    return v if 1 <= v <= 100 else 95.0
+def limiar():
+    """% do limite usado a partir da qual pede a passagem, ou None com a passagem desligada. Vem do config.json
+    (passagem, passagem_pct); TAGTEAM_HANDOFF_THRESHOLD (1 a 100) troca por cima, para testar."""
+    import config
+    cfg = config.carregar()
+    return float(cfg["passagem_pct"]) if cfg["passagem"] else None
 
 
-LIMIAR = _limiar()
 VALIDADE_USO_S = 15 * 60       # leitura do status line mais velha que isso nao vale
 ID_RE = re.compile(r"^[0-9A-Za-z_-]{1,80}$")
 
@@ -103,8 +101,9 @@ def decidir_claude(sessao, ja_continuando, agora):
     """Texto do bloqueio (pedir a passagem) ou None."""
     if ja_continuando or not ID_RE.match(str(sessao)):
         return None
-    uso = uso_claude(agora)
-    if not uso or uso[1] < LIMIAR:
+    lim = limiar()
+    uso = uso_claude(agora) if lim is not None else None
+    if not uso or uso[1] < lim:
         return None
     if not _marcar(f"claude-{sessao}-{uso[2]}"):
         return None
@@ -132,9 +131,10 @@ def decidir_gemini(cascade, ja_continuando, modelo, consultar):
     """consultar() devolve a resposta do RetrieveUserQuotaSummary (ou None). Texto do pedido ou None."""
     if ja_continuando or not ID_RE.match(str(cascade)):
         return None
-    resumo = consultar()
+    lim = limiar()
+    resumo = consultar() if lim is not None else None
     uso = uso_gemini(resumo, modelo) if resumo else None
-    if not uso or uso[1] < LIMIAR:
+    if not uso or uso[1] < lim:
         return None
     if not _marcar(f"agy-{cascade}-{uso[2]}"):
         return None

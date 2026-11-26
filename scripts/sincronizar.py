@@ -42,21 +42,22 @@ sys.path.insert(0, AQUI)
 import antigravity_db as antigravity  # noqa: E402
 import claude_jsonl  # noqa: E402
 import codex  # noqa: E402
+import config  # noqa: E402
 import cursor  # noqa: E402
 import grok  # noqa: E402
 import para_claude  # noqa: E402
 import servidor_local  # noqa: E402
 
 PROJETOS = os.path.join(os.path.expanduser("~"), ".claude", "projects")
-# pasta usada quando a de uma sessao nao existe neste PC (TAGTEAM_WORKSPACE; padrao: a home)
-WORKSPACE = os.environ.get("TAGTEAM_WORKSPACE") or os.path.expanduser("~")
+# pasta usada quando a de uma sessao nao existe neste PC (pasta do config.json ou TAGTEAM_WORKSPACE; padrao: a home)
+WORKSPACE = config.pasta_trabalho(config.carregar())
 ID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 TRAVA_VELHA_S = 30 * 60
 ESPERA_S = 10
 ESPERA_TRAVA_S = 20 * 60
 ETIQUETA = "claude"
 PC = re.sub(r"[^A-Za-z0-9_-]", "_", os.environ.get("COMPUTERNAME", "pc"))[:40]
-PASTA_ESTADO = os.environ.get("TAGTEAM_STATE_DIR") or os.path.join(os.path.expanduser("~"), ".tagteam")
+PASTA_ESTADO = config.pasta_estado()
 ESTADO = os.path.join(PASTA_ESTADO, f"estado-{PC}.json")
 MOLDE_CURSOR = os.path.join(PASTA_ESTADO, f"molde-cursor-{PC}.json")   # o Cursor exige partes de uma conversa nativa
 TRAVA = os.path.join(PASTA_ESTADO, f".trava-{PC}")
@@ -261,6 +262,13 @@ def _espelho_na_base(conv, sessao, estado, base):
     return origem is not None and os.path.exists(os.path.join(base, "conversations", origem + ".db"))
 
 
+def _sessoes_do_claude():
+    """Arquivos das sessoes do Claude que podem sair dele: as de pasta excluida no config.json ficam de fora."""
+    cfg = config.carregar()
+    return [c for c in glob.glob(os.path.join(PROJETOS, "*", "*.jsonl"))
+            if not config.projeto_excluido(cfg, os.path.basename(os.path.dirname(c)))]
+
+
 def _fora_do_filtro(a, sessao):
     """Filtro de sessao do Claude: --sessao, ou o conjunto que acabou de ser exportado (propagacao)."""
     if a.so is not None:
@@ -286,7 +294,7 @@ def para_antigravity(a, estado, cont):
 
 
 def _para_um_alvo(a, imp, estado, cont, base, alvo, molde, servidor):
-    for caminho in glob.glob(os.path.join(PROJETOS, "*", "*.jsonl")):
+    for caminho in _sessoes_do_claude():
         sessao = os.path.basename(caminho)[:-6]
         if not ID_RE.match(sessao) or _fora_do_filtro(a, sessao):
             continue
@@ -401,7 +409,7 @@ def para_grok(a, estado, cont):
     if not grok.instalado():
         return
     imp = estado["importadas_grok"]
-    for caminho in glob.glob(os.path.join(PROJETOS, "*", "*.jsonl")):
+    for caminho in _sessoes_do_claude():
         sessao = os.path.basename(caminho)[:-6]
         if not ID_RE.match(sessao) or _fora_do_filtro(a, sessao):
             continue
@@ -515,7 +523,7 @@ def para_codex(a, estado, cont, srv):
     ctx["por_nome"] = {os.path.basename(p).lower(): (p, tid) for p, tid in ctx["regs"].items()}
     pendentes = []
     try:
-        for caminho in glob.glob(os.path.join(PROJETOS, "*", "*.jsonl")):
+        for caminho in _sessoes_do_claude():
             sessao = os.path.basename(caminho)[:-6]
             if not ID_RE.match(sessao) or _fora_do_filtro(a, sessao):
                 continue
@@ -758,7 +766,7 @@ def para_cursor(a, estado, cont):
         return
     molde = None
     imp = estado["importadas_cursor"]
-    for caminho in glob.glob(os.path.join(PROJETOS, "*", "*.jsonl")):
+    for caminho in _sessoes_do_claude():
         sessao = os.path.basename(caminho)[:-6]
         if not ID_RE.match(sessao) or _fora_do_filtro(a, sessao):
             continue
@@ -866,6 +874,15 @@ def cursor_para_claude(a, estado, cont, novas):
             print(f"erro na conversa {cid} (app do cursor -> claude): {type(e).__name__}: {e}", file=sys.stderr)
 
 
+def _propagar(a, estado, cont, srv, ativas):
+    """Leva o que acabou de virar sessao do Claude para as outras IAs marcadas."""
+    for ia, fn in (("antigravity", para_antigravity), ("grok", para_grok), ("cursor", para_cursor)):
+        if ia in ativas:
+            fn(a, estado, cont)
+    if "codex" in ativas:
+        _codex(a, estado, cont, srv, para_codex)
+
+
 class _CodexPreguicoso:
     """Um app-server do Codex por rodada, aberto so se alguma direcao precisar e sempre encerrado no fim."""
 
@@ -917,8 +934,12 @@ def main():
     if not 0 <= a.atraso <= 600:
         sys.exit("atraso fora de 0..600")
     time.sleep(a.atraso)
-    if not antigravity.bases() and not grok.instalado() and not codex.instalado() and not cursor.instalado():
-        print("nem Antigravity, nem Grok, nem Codex, nem Cursor instalados neste PC; nada a fazer")
+    cfg = config.carregar()
+    ativas = {ia for ia, instalada in (("antigravity", bool(antigravity.bases())), ("grok", grok.instalado()),
+                                        ("codex", codex.instalado()), ("cursor", cursor.instalado()))
+              if instalada and config.conversas(cfg, ia)}
+    if not ativas:
+        print("nenhuma IA marcada para sincronizar esta instalada neste PC; nada a fazer")
         return 0
     if not a.seco and not pegar_trava():
         if not esperar_trava(_argumentos_da_fila(sys.argv[1:])):
@@ -930,31 +951,28 @@ def main():
     try:
         estado = ler_estado()
         d = a.direcao
-        if d in ("ambas", "antigravity"):
+        if d in ("ambas", "antigravity") and "antigravity" in ativas:
             para_antigravity(a, estado, cont)
-        if d in ("ambas", "grok"):
+        if d in ("ambas", "grok") and "grok" in ativas:
             para_grok(a, estado, cont)
-        if d in ("ambas", "codex"):
+        if d in ("ambas", "codex") and "codex" in ativas:
             _codex(a, estado, cont, srv, para_codex)
-        if d in ("ambas", "cursor"):
+        if d in ("ambas", "cursor") and "cursor" in ativas:
             para_cursor(a, estado, cont)
         novas = set()
-        if d in ("ambas", "claude"):
+        if d in ("ambas", "claude") and "antigravity" in ativas:
             para_claude_(a, estado, cont, novas)
-        if d in ("ambas", "claude-de-grok"):
+        if d in ("ambas", "claude-de-grok") and "grok" in ativas:
             grok_para_claude(a, estado, cont, novas)
-        if d in ("ambas", "claude-de-codex"):
+        if d in ("ambas", "claude-de-codex") and "codex" in ativas:
             _codex(a, estado, cont, srv, codex_para_claude, novas)
-        if d in ("ambas", "claude-de-cursor"):
+        if d in ("ambas", "claude-de-cursor") and "cursor" in ativas:
             cursor_para_claude(a, estado, cont, novas)
         # o que acabou de virar sessao do Claude segue para as outras IAs na mesma rodada (a de origem reconhece o
         # proprio espelho e nao o recebe de volta)
         if novas and not a.seco:
             a.so, a.sessao, a.cascade, a.grok, a.codex, a.cursor = novas, None, None, None, None, None
-            para_antigravity(a, estado, cont)
-            para_grok(a, estado, cont)
-            _codex(a, estado, cont, srv, para_codex)
-            para_cursor(a, estado, cont)
+            _propagar(a, estado, cont, srv, ativas)
         print(json.dumps(dict(sorted(cont.items())), ensure_ascii=False))
         return 1 if cont["erro"] else 0
     finally:

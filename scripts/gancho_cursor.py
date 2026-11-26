@@ -42,7 +42,8 @@ def main():
     evento = str(entrada.get("hook_event_name", "")).lower()
     conversa = str(entrada.get("conversation_id") or entrada.get("session_id") or "")
     _anotar(evento, conversa)
-    if not ID_RE.match(conversa):
+    gancho.anotar("cursor", evento)
+    if not ID_RE.match(conversa) or not gancho.ia_marcada("cursor"):
         return 0
     args = ["--direcao", "claude-de-cursor", "--cursor", conversa]
     if evento == "sessionend":

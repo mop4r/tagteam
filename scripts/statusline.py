@@ -9,7 +9,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from passagem import LIMIAR  # noqa: E402
+import passagem  # noqa: E402
 
 
 def linha(d):
@@ -21,11 +21,12 @@ def linha(d):
     if isinstance(ctx, (int, float)):
         partes.append(f"contexto {ctx:.0f}%")
     rl = d.get("rate_limits") if isinstance(d.get("rate_limits"), dict) else {}
+    lim = passagem.limiar()
     for nome, rotulo in (("five_hour", "5h"), ("seven_day", "7d")):
         j = rl.get(nome)
         if isinstance(j, dict) and isinstance(j.get("used_percentage"), (int, float)):
             pct = j["used_percentage"]
-            partes.append(f"{rotulo} {pct:.0f}%" + (" ⚠ passagem" if pct >= LIMIAR else ""))
+            partes.append(f"{rotulo} {pct:.0f}%" + (" ⚠ passagem" if lim is not None and pct >= lim else ""))
     return " · ".join(partes)
 
 
