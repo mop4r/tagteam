@@ -403,6 +403,12 @@ ATALHOS = {"antigravity": ("Agy CLI.lnk", "Agy CLI --resume.lnk"), "grok": ("Gro
            "tagteam": ("TagTeam.lnk",)}
 
 
+# caminho completo: o atalho guarda o alvo ja resolvido, e com so "powershell.exe" a comparacao do atalho.ps1 nunca
+# batia (sem o Windows Terminal, todo atalho era regravado a cada rodada)
+POWERSHELL = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "WindowsPowerShell", "v1.0",
+                          "powershell.exe")
+
+
 def _livre(flag):
     """A flag que tira a aprovacao a cada comando, so se o config.json pede (atalhos_sem_aprovacao)."""
     return f" {flag}" if CFG["atalhos_sem_aprovacao"] else ""
@@ -430,7 +436,7 @@ def gravar_atalhos(comandos, icone, seco, mudou, ia):
         if os.path.isfile(wt):
             alvo, args = wt, f'-d "{WS}" powershell.exe -NoExit -Command "{comando}"'
         else:
-            alvo, args = "powershell.exe", f'-NoExit -Command "{comando}"'
+            alvo, args = POWERSHELL, f'-NoExit -Command "{comando}"'
         if seco:
             continue
         r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File",

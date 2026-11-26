@@ -141,52 +141,99 @@ def resumo_eventos(eventos, agora, janela_s=24 * 3600):
             "ultima": rodadas[-1] if rodadas else None, "ultimo_erro": com_erro[-1] if com_erro else None}
 
 
+MENSAGENS = {
+    "tudo_certo": ("tudo certo", "all good"),
+    "python_velho": ("Python {v}: o TagTeam precisa do 3.11 ou mais novo", "Python {v}: TagTeam needs 3.11 or newer"),
+    "config_ilegivel": ("config.json ilegível: valendo os padrões até salvar de novo",
+                        "config.json unreadable: defaults apply until it is saved again"),
+    "sem_claude": ("Claude Code não encontrado: ele é o centro da sincronização",
+                   "Claude Code not found: it is the hub of the sync"),
+    "hooks_claude": ("hooks do TagTeam fora do settings.json do Claude: use Reparar (R)",
+                     "TagTeam hooks missing from Claude's settings.json: use Repair (R)"),
+    "trava_presa": ("trava presa há {m} min (a próxima rodada limpa)", "lock stuck for {m} min (the next run clears it)"),
+    "sincronizando": ("sincronizando agora", "syncing now"),
+    "agendadas": ("{n} rodada(s) agendada(s) para o fim do intervalo de 2 min",
+                  "{n} run(s) scheduled for the end of the 2-minute window"),
+    "erros_24h": ("{n} rodada(s) com erro em 24 h; última: {e}", "{n} run(s) with errors in 24 h; last: {e}"),
+    "veja_log": ("veja o log", "see the log"),
+    "nao_instalada": ("marcada, mas não está instalada neste PC", "checked, but not installed on this PC"),
+    "hook_fora": ("hook de conversas fora do lugar: use Reparar (R)", "chat hook missing: use Repair (R)"),
+    "hook_nunca": ("hook ainda não foi chamado neste PC (abra uma conversa nela)",
+                   "hook not called on this PC yet (open a chat there)"),
+    "hook_parado": ("hook não é chamado há {d} dias", "hook not called for {d} days"),
+}
+ASSUNTOS = {"geral": ("Geral", "General"), "python": ("Python", "Python"), "configuracao": ("Configuração", "Settings"),
+            "sincronizacao": ("Sincronização", "Sync"), "claude": ("Claude Code", "Claude Code")}
+
+
+def texto(chave, idioma="pt", **kw):
+    """Mensagem de uma checagem no idioma (pt ou en)."""
+    pt, en = MENSAGENS[chave]
+    return (pt if idioma == "pt" else en).format(**kw)
+
+
+def assunto(chave, idioma="pt"):
+    if chave in config.NOMES and chave not in ASSUNTOS:
+        return config.NOMES[chave]
+    pt, en = ASSUNTOS[chave]
+    return pt if idioma == "pt" else en
+
+
 def checagens(cfg, detectado, agora=None, eventos=None):
-    """Lista de (assunto, nivel, texto) para o painel de saude. nivel: ok, aviso, erro ou info."""
+    """Lista de (assunto, nivel, mensagem, parametros) para o painel de saude. nivel: ok, aviso, erro ou info; assunto
+    e mensagem sao chaves (assunto() e texto() dao o texto no idioma)."""
     agora = time.time() if agora is None else agora
     eventos = registro.ler_eventos(500) if eventos is None else eventos
+    saida = _checagens_gerais(cfg, detectado, agora, eventos)
+    for ia in config.IAS:
+        if config.ligada(cfg, ia):
+            saida += _checagens_da_ia(cfg, ia, detectado, agora)
+    if not any(n in (ERRO, AVISO) for _a, n, _m, _k in saida):
+        saida.insert(0, ("geral", OK, "tudo_certo", {}))
+    return saida
+
+
+def _checagens_gerais(cfg, detectado, agora, eventos):
     saida = []
     if sys.version_info < PYTHON_MINIMO:
-        saida.append(("Python", ERRO, f"Python {sys.version.split()[0]}: o TagTeam precisa do 3.11 ou mais novo"))
-    _bruto, problema = config.ler_bruto()
-    if problema in ("invalida", "grande"):
-        saida.append(("Configuracao", ERRO, "config.json ilegivel: valendo os padroes ate salvar de novo"))
+        saida.append(("python", ERRO, "python_velho", {"v": sys.version.split()[0]}))
+    if config.ler_bruto()[1] in ("invalida", "grande"):
+        saida.append(("configuracao", ERRO, "config_ilegivel", {}))
     if not detectado["claude"]["instalada"] and not os.path.isdir(CLAUDE):
-        saida.append(("Claude Code", ERRO, "Claude Code nao encontrado: ele e o centro da sincronizacao"))
+        saida.append(("claude", ERRO, "sem_claude", {}))
     elif hook_registrado("claude") is False and any(config.ligada(cfg, ia) for ia in config.IAS):
-        saida.append(("Claude Code", ERRO, "hooks do TagTeam fora do settings.json do Claude: rode o reparo"))
+        saida.append(("claude", ERRO, "hooks_claude", {}))
     trava = os.path.join(config.pasta_estado(), f".trava-{registro.PC}")
     if os.path.exists(trava):
         idade = agora - os.path.getmtime(trava)
-        saida.append(("Sincronizacao", AVISO if idade > TRAVA_VELHA_S else INFO,
-                      f"trava presa ha {idade / 60:.0f} min (a proxima rodada limpa)" if idade > TRAVA_VELHA_S
-                      else "sincronizando agora"))
-    pendentes = glob.glob(os.path.join(gancho.PASTA, "pendente-*"))
-    pendentes = [p for p in pendentes if agora - os.path.getmtime(p) < 2 * gancho.INTERVALO_S]
+        if idade > TRAVA_VELHA_S:
+            saida.append(("sincronizacao", AVISO, "trava_presa", {"m": f"{idade / 60:.0f}"}))
+        else:
+            saida.append(("sincronizacao", INFO, "sincronizando", {}))
+    pendentes = [p for p in glob.glob(os.path.join(gancho.PASTA, "pendente-*"))
+                 if agora - os.path.getmtime(p) < 2 * gancho.INTERVALO_S]
     if pendentes:
-        saida.append(("Sincronizacao", INFO, f"{len(pendentes)} rodada(s) agendada(s) para o fim do intervalo de 2 min"))
+        saida.append(("sincronizacao", INFO, "agendadas", {"n": len(pendentes)}))
     res = resumo_eventos(eventos, agora)
     if res["ultimo_erro"]:
-        erro = (res["ultimo_erro"].get("erros") or ["veja o log"])[-1]
-        saida.append(("Sincronizacao", AVISO, f"{res['com_erro']} rodada(s) com erro em 24 h; ultima: {erro[:160]}"))
-    for ia in config.IAS:
-        nome = config.NOMES[ia]
-        if not config.ligada(cfg, ia):
-            continue
-        if not detectado[ia]["instalada"]:
-            saida.append((nome, AVISO, "marcada, mas nao esta instalada neste PC"))
-            continue
-        if config.conversas(cfg, ia):
-            reg = hook_registrado(ia)
-            if reg is False:
-                saida.append((nome, ERRO, "hook de conversas fora do lugar: rode o reparo"))
-            quando, _ev = ultimo_gancho(ia)
-            if quando is None:
-                saida.append((nome, INFO, "hook ainda nao foi chamado neste PC (abra uma conversa nela)"))
-            elif agora - quando > HOOK_PARADO_S:
-                saida.append((nome, INFO, f"hook nao e chamado ha {(agora - quando) / 86400:.0f} dias"))
-    if not any(n in (ERRO, AVISO) for _a, n, _t in saida):
-        saida.insert(0, ("Geral", OK, "tudo certo"))
+        erros = res["ultimo_erro"].get("erros") or []
+        saida.append(("sincronizacao", AVISO, "erros_24h", {"n": res["com_erro"], "e": (erros[-1] if erros else "?")[:160]}))
+    return saida
+
+
+def _checagens_da_ia(cfg, ia, detectado, agora):
+    if not detectado[ia]["instalada"]:
+        return [(ia, AVISO, "nao_instalada", {})]
+    if not config.conversas(cfg, ia):
+        return []
+    saida = []
+    if hook_registrado(ia) is False:
+        saida.append((ia, ERRO, "hook_fora", {}))
+    quando, _ev = ultimo_gancho(ia)
+    if quando is None:
+        saida.append((ia, INFO, "hook_nunca", {}))
+    elif agora - quando > HOOK_PARADO_S:
+        saida.append((ia, INFO, "hook_parado", {"d": f"{(agora - quando) / 86400:.0f}"}))
     return saida
 
 

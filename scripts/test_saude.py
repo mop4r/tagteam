@@ -28,7 +28,7 @@ class TestSaude(unittest.TestCase):
         self.cfg = config.carregar()
 
     def niveis(self, lista):
-        return [(a, n) for a, n, _t in lista]
+        return [(a, n) for a, n, _m, _k in lista]
 
     def test_contagens_pelo_estado(self):
         estado = {"importadas": {"antigravity": {"a": {}, "b": {}}, "antigravity-cli": {"a": {}}},
@@ -58,38 +58,38 @@ class TestSaude(unittest.TestCase):
     def test_tudo_certo(self):
         for ia in config.IAS:
             open(os.path.join(self.temp, f"gancho-{ia}.txt"), "w").close()
-        self.assertEqual(self.niveis(saude.checagens(self.cfg, TODAS, eventos=[])), [("Geral", "ok")])
+        self.assertEqual(self.niveis(saude.checagens(self.cfg, TODAS, eventos=[])), [("geral", "ok")])
 
     def test_ia_marcada_e_nao_instalada_avisa(self):
         det = json.loads(json.dumps(TODAS))
         det["grok"] = {"app": False, "cli": False, "instalada": False}
         lista = saude.checagens(self.cfg, det, eventos=[])
-        self.assertIn(("Grok CLI", "aviso"), self.niveis(lista))
-        self.assertNotIn(("Geral", "ok"), self.niveis(lista))
+        self.assertIn(("grok", "aviso"), self.niveis(lista))
+        self.assertNotIn(("geral", "ok"), self.niveis(lista))
 
     def test_ia_desmarcada_nao_aparece(self):
         self.cfg["conversas"]["grok"] = self.cfg["ambiente"]["grok"] = False
         det = json.loads(json.dumps(TODAS))
         det["grok"]["instalada"] = False
-        self.assertNotIn("Grok CLI", [a for a, _n, _t in saude.checagens(self.cfg, det, eventos=[])])
+        self.assertNotIn("grok", [a for a, _n, _m, _k in saude.checagens(self.cfg, det, eventos=[])])
 
     def test_hook_fora_do_lugar_e_erro(self):
         with mock.patch.object(saude, "hook_registrado", lambda ia: ia != "codex"):
             lista = saude.checagens(self.cfg, TODAS, eventos=[])
-        self.assertIn(("OpenAI Codex", "erro"), self.niveis(lista))
+        self.assertIn(("codex", "erro"), self.niveis(lista))
 
     def test_trava_velha_avisa_e_nova_e_informacao(self):
         trava = os.path.join(self.pasta, f".trava-{saude.registro.PC}")
         open(trava, "w").close()
         agora = os.path.getmtime(trava)
-        self.assertIn(("Sincronizacao", "info"), self.niveis(saude.checagens(self.cfg, TODAS, agora=agora + 5, eventos=[])))
-        self.assertIn(("Sincronizacao", "aviso"),
+        self.assertIn(("sincronizacao", "info"), self.niveis(saude.checagens(self.cfg, TODAS, agora=agora + 5, eventos=[])))
+        self.assertIn(("sincronizacao", "aviso"),
                       self.niveis(saude.checagens(self.cfg, TODAS, agora=agora + 3600, eventos=[])))
 
     def test_config_ilegivel_e_erro(self):
         with open(config.caminho(), "w", encoding="utf-8") as f:
             f.write("{x")
-        self.assertIn(("Configuracao", "erro"), self.niveis(saude.checagens(self.cfg, TODAS, eventos=[])))
+        self.assertIn(("configuracao", "erro"), self.niveis(saude.checagens(self.cfg, TODAS, eventos=[])))
 
 
 class TestHookRegistrado(unittest.TestCase):
