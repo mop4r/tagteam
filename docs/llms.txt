@@ -16,7 +16,7 @@ When Claude Code hits its 5-hour or 7-day usage limit mid-task, switching to Gem
 
 ## Core capabilities
 
-- Five-way bidirectional conversation sync: Claude Code JSONL <-> Antigravity SQLite + protobuf (app and `agy` CLI) <-> Grok CLI ACP JSONL <-> OpenAI Codex (app and CLI, through its official local app-server API and native session import) <-> Cursor (`cursor-agent` chat store; chats made in the Cursor app are read from its database).
+- Five-way bidirectional conversation sync: Claude Code JSONL <-> Antigravity SQLite + protobuf (app and `agy` CLI) <-> Grok CLI ACP JSONL <-> OpenAI Codex (app and CLI, through its official local app-server API and native session import) <-> Cursor (`cursor-agent` chat store, and the Cursor app's own database in both directions: Claude sessions are written into the app, which Cursor's own importer cannot do on Windows).
 - Automatic handoff at 95% of the Claude Code usage limit or Gemini quota: writes a five-line summary (Request, Done, In progress, Next step, Watch out) before stopping.
 - Shared environment by reference (never copied): `~/.claude/CLAUDE.md`, skills, plugins, and MCP servers mirrored to Gemini (`~/.gemini`), Grok (`~/.grok`), Codex (`~/.codex`) and Cursor (`~/.cursor`, which already reads Claude's skills, CLAUDE.md and plugins natively).
 - Interactive resume pickers for `agy` (`agy_resume.py`) and Grok (`grok-resume.exe`) with Start Menu shortcuts.
