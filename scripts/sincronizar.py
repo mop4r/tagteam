@@ -44,6 +44,7 @@ import claude_jsonl  # noqa: E402
 import codex  # noqa: E402
 import config  # noqa: E402
 import cursor  # noqa: E402
+import cursor_app  # noqa: E402
 import grok  # noqa: E402
 import para_claude  # noqa: E402
 import servidor_local  # noqa: E402
@@ -60,6 +61,8 @@ PC = re.sub(r"[^A-Za-z0-9_-]", "_", os.environ.get("COMPUTERNAME", "pc"))[:40]
 PASTA_ESTADO = config.pasta_estado()
 ESTADO = os.path.join(PASTA_ESTADO, f"estado-{PC}.json")
 MOLDE_CURSOR = os.path.join(PASTA_ESTADO, f"molde-cursor-{PC}.json")   # o Cursor exige partes de uma conversa nativa
+MOLDE_CURSOR_APP = os.path.join(PASTA_ESTADO, f"molde-cursor-app-{PC}.json")
+DIAS_APP_CURSOR = 30                # como o importador nativo do Cursor: so as sessoes dos ultimos 30 dias vao ao app
 TRAVA = os.path.join(PASTA_ESTADO, f".trava-{PC}")
 # "home" so do app-server filho: copias enxutas das sessoes do Claude com a pasta deste PC (codex.preparar)
 PREPARO = os.path.join(PASTA_ESTADO, f"codex-preparo-{PC}")
@@ -115,6 +118,8 @@ def ler_estado():
         "importadas_cursor": _filtrar(d, "importadas_cursor",
                                       lambda _k, v: _entrada_valida(v, "id") and isinstance(v.get("pasta"), str)),
         "exportadas_cursor": _filtrar(d, "exportadas_cursor", com_turnos),
+        "importadas_cursor_app": _filtrar(d, "importadas_cursor_app",
+                                          lambda _k, v: _entrada_valida(v, "id") and isinstance(v.get("mensagens"), int)),
     }
 
 
@@ -760,9 +765,15 @@ def _cursor_pular(a, estado, cont, caminho, sessao, fonte):
 
 
 def para_cursor(a, estado, cont):
-    """Grava as sessoes do Claude como conversas do CLI do Cursor (o app le o mesmo armazenamento). Continuada no
-    Cursor nunca e sobrescrita: a versao nova do Claude vira outra conversa e a continuada fica."""
-    if not cursor.instalado():
+    """Claude -> Cursor: o CLI (~/.cursor/chats) e o app (state.vscdb)."""
+    _para_cursor_cli(a, estado, cont)
+    para_cursor_app(a, estado, cont)
+
+
+def _para_cursor_cli(a, estado, cont):
+    """Grava as sessoes do Claude como conversas do CLI do Cursor. Continuada no Cursor nunca e sobrescrita: a versao
+    nova do Claude vira outra conversa e a continuada fica."""
+    if not (os.path.isdir(cursor.pasta_chats()) or cursor.cli()):
         return
     molde = None
     imp = estado["importadas_cursor"]
@@ -805,6 +816,112 @@ def para_cursor(a, estado, cont):
         except (OSError, ValueError, KeyError, sqlite3.Error) as e:
             cont["erro"] += 1
             print(f"erro na sessao {sessao} (cursor): {type(e).__name__}: {e}", file=sys.stderr)
+
+
+# ---------------------------------------------------------------- Claude -> app do Cursor
+def _sessoes_para_app(a, agora):
+    """(caminho, sessao) das sessoes do Claude dos ultimos DIAS_APP_CURSOR dias que passam no filtro da rodada."""
+    limite = agora - DIAS_APP_CURSOR * 86400
+    saida = []
+    for caminho in _sessoes_do_claude():
+        sessao = os.path.basename(caminho)[:-6]
+        if ID_RE.match(sessao) and not _fora_do_filtro(a, sessao) and os.path.getmtime(caminho) >= limite:
+            saida.append((caminho, sessao))
+    return saida
+
+
+def para_cursor_app(a, estado, cont):
+    """Grava as sessoes do Claude como conversas do app do Cursor (cursor_app.py). So com o app fechado e com o formato
+    conhecido; so nas pastas que o app ja conhece. Continuada no app nunca e sobrescrita (vira versao nova)."""
+    if not os.path.isfile(cursor.banco_app()):
+        return
+    alvos = _sessoes_para_app(a, time.time())
+    if not alvos:
+        return
+    if cursor_app.app_aberto():
+        cont["c>ua app_aberto"] += 1             # aberto, o app sobrescreveria: fica para a proxima rodada
+        return
+    c = cursor_app.abrir()
+    try:
+        cursor_app.conferir_formato(c)
+        ctx = {"projetos": cursor_app.projetos(c), "molde": None}
+        for caminho, sessao in alvos:
+            try:
+                _sessao_para_app(a, estado, cont, c, ctx, caminho, sessao)
+            except (OSError, ValueError, KeyError, sqlite3.Error) as e:
+                cont["erro"] += 1
+                print(f"erro na sessao {sessao} (app do cursor): {type(e).__name__}: {e}", file=sys.stderr)
+            if ctx.get("parar"):
+                break
+    except cursor_app.FormatoDesconhecido as e:
+        cont["c>ua formato_desconhecido"] += 1
+        print(f"app do Cursor com formato desconhecido ({e}); nada gravado nele", file=sys.stderr)
+    finally:
+        c.close()
+
+
+def _molde_app(c, estado, ctx):
+    """Molde do app: de uma conversa nativa (e guardado), ou o guardado se nao houver mais conversa nativa."""
+    if ctx["molde"] is None:
+        nossos = {r["id"] for r in estado["importadas_cursor_app"].values()}
+        molde = cursor_app.achar_molde(c, nossos)
+        if molde is not None:
+            os.makedirs(PASTA_ESTADO, exist_ok=True)
+            tmp = MOLDE_CURSOR_APP + ".novo"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(molde, f, ensure_ascii=False)
+            os.replace(tmp, MOLDE_CURSOR_APP)
+        else:
+            try:
+                with open(MOLDE_CURSOR_APP, encoding="utf-8") as f:
+                    molde = json.load(f)
+            except (OSError, ValueError):
+                molde = None
+        if molde is not None and molde.get("dados", {}).get("_v") not in cursor_app.VERSOES:
+            raise cursor_app.FormatoDesconhecido(f"versao {molde.get('dados', {}).get('_v')} do formato das conversas")
+        ctx["molde"] = molde or False
+    return ctx["molde"] or None
+
+
+def _sessao_para_app(a, estado, cont, c, ctx, caminho, sessao):
+    imp = estado["importadas_cursor_app"]
+    st = os.stat(caminho)
+    fonte = (st.st_size, round(st.st_mtime, 3))
+    rec = imp.get(sessao)
+    agora_msgs = cursor_app.mensagens(c, rec["id"]) if rec else None
+    if rec and agora_msgs is None and not a.forcar:
+        cont["c>ua apagadas_no_app"] += 1
+        return
+    if rec and (rec.get("fonte_tamanho"), rec.get("fonte_mtime")) == fonte and not a.forcar:
+        cont["c>ua iguais"] += 1
+        return
+    conv = claude_jsonl.ler_conversa(caminho, sessao)
+    motivo = ("automaticas" if conv.entrypoint.startswith("sdk") else
+              "espelhos" if _espelho(conv, sessao, estado, "cursor") else
+              "vazias" if not any(t.papel == "usuario" for t in conv.turnos) else None)
+    if motivo:
+        cont["c>ua " + motivo] += 1
+        return
+    projeto = ctx["projetos"].get(cursor_app.chave_da_pasta(cwd_local(conv.cwd)))
+    if projeto is None:
+        cont["c>ua fora_das_pastas_do_app"] += 1
+        return
+    molde = _molde_app(c, estado, ctx)
+    if molde is None:
+        cont["c>ua sem conversa nativa para molde"] += 1
+        ctx["parar"] = True
+        return
+    continuada = rec is not None and agora_msgs is not None and agora_msgs > rec["mensagens"]
+    versao = (rec["versao"] + 1 if continuada else rec["versao"]) if rec else 0
+    rotulo = "c>ua versao_nova" if continuada else "c>ua atualizadas" if rec else "c>ua criadas"
+    cont[rotulo] += 1
+    if a.seco:
+        print(f"{rotulo}: {conv.titulo} ({len(conv.turnos)} turnos)")
+        return
+    cid = cursor_app.id_para_sessao(sessao, versao)
+    qtd = cursor_app.gravar(c, conv, cid, projeto[0], projeto[1], molde, int(time.time() * 1000))
+    imp[sessao] = {"id": cid, "versao": versao, "mensagens": qtd, "fonte_tamanho": fonte[0], "fonte_mtime": fonte[1]}
+    gravar_estado(estado)
 
 
 # ---------------------------------------------------------------- Cursor -> Claude
@@ -863,8 +980,12 @@ def cursor_para_claude(a, estado, cont, novas):
         cont["erro"] += 1
         print(f"erro ao ler as conversas do app do Cursor: {type(e).__name__}: {e}", file=sys.stderr)
         do_app = []
-    for cid, _dados in do_app:
+    copias = {r["id"]: r for r in estado["importadas_cursor_app"].values()}
+    for cid, dados in do_app:
         if _cursor_pular_filtro(a, cid):
+            continue
+        if _copia_nao_continuada(cid, dados, copias):
+            cont["u>c espelhos"] += 1                    # copia do Claude gravada pelo TagTeam, ninguem continuou
             continue
         try:
             conv, assin = cursor.ler_conversa_app(cid)
@@ -872,6 +993,17 @@ def cursor_para_claude(a, estado, cont, novas):
         except (OSError, ValueError, KeyError, sqlite3.Error) as e:
             cont["erro"] += 1
             print(f"erro na conversa {cid} (app do cursor -> claude): {type(e).__name__}: {e}", file=sys.stderr)
+
+
+def _copia_nao_continuada(cid, dados, copias):
+    """A conversa do app e uma copia do Claude (pelo estado ou pela marca que o TagTeam grava) com as mesmas mensagens
+    de quando foi gravada."""
+    marca = dados.get("tagteam") if isinstance(dados.get("tagteam"), dict) else {}
+    gravadas = copias[cid]["mensagens"] if cid in copias else marca.get("mensagens")
+    if not isinstance(gravadas, int):
+        return False
+    agora = (dados.get("headerLog") or {}).get("count") if isinstance(dados.get("headerLog"), dict) else None
+    return isinstance(agora, int) and agora <= gravadas
 
 
 def _propagar(a, estado, cont, srv, ativas):

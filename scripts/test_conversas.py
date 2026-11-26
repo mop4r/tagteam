@@ -264,7 +264,8 @@ class TestEstado(unittest.TestCase):
             self.assertEqual(sincronizar.ler_estado(), {"importadas": {}, "exportadas": {}, "importadas_grok": {},
                                                         "exportadas_grok": {}, "importadas_codex": {},
                                                         "exportadas_codex": {}, "vistas_codex": {},
-                                                        "importadas_cursor": {}, "exportadas_cursor": {}})
+                                                        "importadas_cursor": {}, "exportadas_cursor": {},
+                                                "importadas_cursor_app": {}})
         finally:
             sincronizar.ESTADO = antigo
 

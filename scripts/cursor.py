@@ -46,7 +46,7 @@ def cli():
 
 
 def instalado():
-    return os.path.isdir(pasta_chats()) or bool(cli())
+    return os.path.isdir(pasta_chats()) or bool(cli()) or os.path.isfile(banco_app())
 
 
 def pasta_do_cwd(cwd):

@@ -110,7 +110,7 @@ def contagens(estado):
     para_antigravity = sum(len(v) for v in imp.values() if isinstance(v, dict))
     return {"antigravity": (para_antigravity, n("exportadas")), "grok": (n("importadas_grok"), n("exportadas_grok")),
             "codex": (n("importadas_codex"), n("exportadas_codex")),
-            "cursor": (n("importadas_cursor"), n("exportadas_cursor"))}
+            "cursor": (n("importadas_cursor") + n("importadas_cursor_app"), n("exportadas_cursor"))}   # CLI + app
 
 
 def arquivo_estado():
