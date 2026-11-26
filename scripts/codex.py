@@ -487,6 +487,17 @@ def _importar_lote(srv, lote, feitos, falhas):
                 falhas[chave] = f"{f.get('subErrorType') or f.get('failureStage')}: {str(f.get('message'))[:200]}"
 
 
+_SQL_ALINHAR_MS = (
+    "update threads set updated_at = recency_at, created_at = min(created_at, recency_at), "
+    "updated_at_ms = recency_at_ms, created_at_ms = min(created_at_ms, recency_at_ms) "
+    "where id = ? and recency_at > 0 and updated_at > recency_at + 60"
+)
+_SQL_ALINHAR = (
+    "update threads set updated_at = recency_at, created_at = min(created_at, recency_at) "
+    "where id = ? and recency_at > 0 and updated_at > recency_at + 60"
+)
+
+
 def alinhar_datas(ids, home=None):
     """O importador do Codex grava a data real em recency_at, mas em muitas sessoes deixa created_at/updated_at e o
     mtime do rollout com a hora da importacao (empurrando conversas antigas para o topo do 'codex resume'). Alinha o
@@ -504,11 +515,6 @@ def alinhar_datas(ids, home=None):
             return 0
         com_ms = {"created_at_ms", "updated_at_ms", "recency_at_ms"}.issubset(cols)
         com_rp = "rollout_path" in cols
-        sql = (
-            "update threads set updated_at = recency_at, created_at = min(created_at, recency_at)"
-            + (", updated_at_ms = recency_at_ms, created_at_ms = min(created_at_ms, recency_at_ms)" if com_ms else "")
-            + " where id = ? and recency_at > 0 and updated_at > recency_at + 60"
-        )
         for tid in ids:
             if com_rp:
                 row = c.execute("select recency_at, rollout_path from threads where id = ? and recency_at > 0",
@@ -517,6 +523,6 @@ def alinhar_datas(ids, home=None):
                     with contextlib.suppress(OSError):
                         if os.path.getmtime(row[1]) > row[0] + 60:
                             os.utime(row[1], (row[0], row[0]))
-            total += c.execute(sql, (tid,)).rowcount
+            total += c.execute(_SQL_ALINHAR_MS if com_ms else _SQL_ALINHAR, (tid,)).rowcount
         c.commit()
     return total
