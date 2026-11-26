@@ -212,6 +212,12 @@ def _checagens_gerais(cfg, detectado, agora, eventos):
         saida.append(("claude", ERRO, "sem_claude", {}))
     elif hook_registrado("claude") is False and any(config.ligada(cfg, ia) for ia in config.IAS):
         saida.append(("claude", ERRO, "hooks_claude", {}))
+    return saida + _checagens_das_rodadas(agora, eventos)
+
+
+def _checagens_das_rodadas(agora, eventos):
+    """Trava, rodadas agendadas, CLIs que nao atualizaram e erros das rodadas das ultimas 24 h."""
+    saida = []
     trava = os.path.join(config.pasta_estado(), f".trava-{registro.PC}")
     if os.path.exists(trava):
         idade = agora - os.path.getmtime(trava)
