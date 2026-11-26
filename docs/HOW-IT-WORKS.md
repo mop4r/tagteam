@@ -145,8 +145,11 @@ each AI syncs with Claude, and whatever just arrived from one side is relayed to
 - The Cursor **app** stores its own chats in `%APPDATA%\Cursor\User\globalStorage\state.vscdb` (table
   `cursorDiskKV`: `composerData:<id>`, `composerConvHeaders:<id>:<chunk>` with the message order, `bubbleId:<id>:<msg>`
   with the text). TagTeam reads them **read-only** and sends them to Claude as "[Cursor] …" (the app fires the same
-  `~/.cursor/hooks.json`). Claude → app is the app's own setting *Import Claude Code Conversations*: writing into the
-  live app database would be fragile.
+  `~/.cursor/hooks.json`). Claude → app would be the app's own setting *Import Claude Code Conversations* (writing into
+  the live app database would be fragile), but in Cursor 1.1.3 it does not work on Windows. Its `ClaudeCodeAgentRepository`
+  looks for `<home>/.claude/projects/<cwd with "/" replaced by "-">`, where `cwd` is the workspace `fsPath`
+  (`c:\Users\you\project`): the result contains `\` and `:` and never matches the folder Claude Code writes
+  (`C--Users-you-project`, every non-alphanumeric character replaced), so the workspace is skipped silently.
 
 ## Setup, options and the monitor
 

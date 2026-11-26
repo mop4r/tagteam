@@ -175,9 +175,11 @@ Test it without waiting for the limit: `set TAGTEAM_HANDOFF_THRESHOLD=10`.
 
 **Cursor:** conversations both ways with the `cursor-agent` CLI; Cursor reads `CLAUDE.md`, Claude's skills and enabled
 plugins natively, and TagTeam writes `~/.cursor/mcp.json`, the `~/.cursor/hooks.json` hook and the claude.ai skill
-junctions. Chats made in the Cursor **app** are read from its database and reach Claude (and the others) too; for the
-other direction, turn on the app's *Import Claude Code Conversations* setting, which shows Claude's sessions (and so
-every copy TagTeam relays) there.
+junctions. Chats made in the Cursor **app** are read from its database and reach Claude (and the others) too. The other
+direction would be the app's own *Import Claude Code Conversations* setting, but in Cursor 1.1.3 it finds nothing on
+Windows: it builds the Claude project folder name by replacing only `/` with `-`, while Claude Code replaces every
+character that is not a letter or digit (so `C:\Users\you\project` never matches `C--Users-you-project`). Until Cursor
+fixes it, Claude's sessions show up in the `cursor-agent` CLI, not in the app.
 
 ## 🛠️ Manual commands
 
