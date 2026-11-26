@@ -62,31 +62,52 @@ limit, the agent that is about to stop **writes a five-line handoff** so the nex
 
 ## ⚡ Quick start
 
-> **Requirements:** Windows 10/11, Python 3.11+, [Claude Code](https://claude.com/claude-code). The Antigravity and Codex
-> apps are optional; the `agy` CLI, the Grok CLI and the Codex CLI are installed for you.
+> **Requirements:** Windows 10/11 and [Claude Code](https://claude.com/claude-code). Python 3.11+ (the installer offers
+> to install it with winget). The other AIs are optional: TagTeam shows which ones you have and installs the official
+> `agy`, Grok and Codex CLIs if you check them.
+
+Paste this in PowerShell:
 
 ```powershell
-# 1. Install as a Claude Code skill
-git clone https://github.com/mop4r/tagteam "$HOME\.claude\skills\tagteam"
-
-# 2. Wire everything (hooks, Gemini + Grok + Codex environment, CLIs, Start Menu shortcuts). Safe to re-run.
-python -I "$HOME\.claude\skills\tagteam\scripts\instalar.py"
-
-# 3. Sign in once to each CLI (opens the browser), then just work.
-agy
-grok
-codex
+irm https://mop4r.github.io/tagteam/install.ps1 | iex
 ```
+
+It downloads the latest release (checked against the SHA-256 GitHub publishes for it) and opens the TagTeam setup:
+
+1. **Pick the AIs.** It shows what is installed on your PC; check the ones that should share conversations with Claude Code.
+2. **Pick the options.** Default folder, the same Claude environment (CLAUDE.md, skills, plugins, MCP) in each AI, Start
+   Menu shortcuts (as admin and without approval prompts only if you say so), the usage status line, the automatic
+   handoff and its %, and folders whose conversations must never leave Claude.
+3. **Watch it install.** Each step with a ✓ or the reason it failed; then open each CLI once to sign in.
+
+<p align="center"><img src="assets/screens/assistente-en.png" alt="TagTeam setup: choose which AIs to sync with Claude Code" width="88%"></p>
+
+### The monitor
+
+Open **TagTeam** from the Start Menu (or run it again) and the same program is a **live monitor**: health, chats in
+each direction per AI, when each AI's hook last fired, the runs of the last 24 h and any errors. From there you can
+sync now, do a dry run, add or remove an AI (one you skipped, or one you installed later), change the options, repair
+the setup, open the log, update TagTeam or uninstall it (hooks, shortcuts and generated blocks go; no conversation is
+deleted).
+
+<p align="center"><img src="assets/screens/monitor-en.png" alt="TagTeam monitor: per-AI health, chats synced in each direction, recent runs and errors" width="88%"></p>
 
 That's it. Start a conversation in any of the five; open another one and it is already there.
 
 <details>
-<summary><b>Dry run first?</b></summary>
+<summary><b>Install with git instead (or without the screens)</b></summary>
 
 ```powershell
-python -I "$HOME\.claude\skills\tagteam\scripts\instalar.py" --seco      # shows what would change
-python -I "$HOME\.claude\skills\tagteam\scripts\sincronizar.py" --seco   # shows what would sync
+git clone https://github.com/mop4r/tagteam "$HOME\.claude\skills\tagteam"
+python -I "$HOME\.claude\skills\tagteam\scripts\tagteam.py"            # setup + monitor
+python -I "$HOME\.claude\skills\tagteam\scripts\tagteam.py" --simples  # numbered prompts, no full screen
+python -I "$HOME\.claude\skills\tagteam\scripts\tagteam.py" --status   # print health and exit
+python -I "$HOME\.claude\skills\tagteam\scripts\instalar.py" --seco     # what the setup would change
+python -I "$HOME\.claude\skills\tagteam\scripts\sincronizar.py" --seco  # what a sync would do
 ```
+
+Without `~/.tagteam/config.json` TagTeam behaves as before it existed (every AI, shortcuts as admin and without
+approval prompts), so an existing install changes nothing until you save options in the monitor.
 </details>
 
 ## 🧩 How it works
@@ -171,11 +192,11 @@ python -m unittest discover -p "test_*.py"     # 160+ tests (the Codex ones run 
 
 | Environment variable | Default | What it does |
 |---|---|---|
-| `TAGTEAM_HANDOFF_THRESHOLD` | `95` | % of the limit that triggers the handoff |
-| `TAGTEAM_WORKSPACE` | your home | default working folder (shortcuts, fallback for sessions whose folder doesn't exist here) |
-| `TAGTEAM_STATE_DIR` | `~/.tagteam` | per-PC sync state |
+| `TAGTEAM_HANDOFF_THRESHOLD` | `95` | % of the limit that triggers the handoff (wins over the monitor's option) |
+| `TAGTEAM_WORKSPACE` | your home | default working folder (shortcuts, fallback for sessions whose folder doesn't exist here; wins over the monitor's option) |
+| `TAGTEAM_STATE_DIR` | `~/.tagteam` | per-PC sync state, `config.json` (the monitor's options) and `eventos-<PC>.jsonl` (one line per run) |
 
-Logs: `%TEMP%\tagteam\sincronizar.log`.
+Logs: `%TEMP%\tagteam\sincronizar.log` (each run's output in one block, so parallel runs never mix lines).
 
 ## ❓ FAQ
 
@@ -193,6 +214,12 @@ official CLI installers, when you don't have them yet.</details>
 
 Yes. Sync `~/.claude/projects` with whatever you like (git, Syncthing, OneDrive…). On each PC, TagTeam imports the
 Claude sessions into that PC's Gemini, Grok and Codex, remapping paths from other users and drives.</details>
+
+<details><summary><b>How do I stop syncing one AI, or uninstall?</b></summary>
+
+Open **TagTeam** (Start Menu) and press **I** to uncheck the AI (or only its chats, or only its environment) and the
+setup takes its hook, shortcuts and generated blocks out; press **D** to uninstall everything. The conversations already
+copied, and the AIs themselves, stay where they are.</details>
 
 <details><summary><b>What happens if I continue the same chat in two tools?</b></summary>
 

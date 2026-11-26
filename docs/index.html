@@ -43,7 +43,7 @@
         "name": "TagTeam",
         "applicationCategory": "DeveloperApplication",
         "operatingSystem": "Windows 10, Windows 11",
-        "softwareVersion": "0.2.0",
+        "softwareVersion": "0.3.0",
         "license": "https://opensource.org/licenses/MIT",
         "url": "https://mop4r.github.io/tagteam/",
         "codeRepository": "https://github.com/mop4r/tagteam",
@@ -132,17 +132,17 @@
     </section>
 
     <section id="install">
-      <h2>Install in a few commands</h2>
-      <p>Requires Windows 10/11, Python 3.11+ and Claude Code. The installer sets up hooks, mirrors your environment, and installs the official <code>agy</code>, <code>grok</code> and <code>codex</code> CLIs if missing (Cursor is detected when installed).</p>
+      <h2>Install with one command</h2>
+      <p>Requires Windows 10/11 and Claude Code. Paste this in PowerShell: it checks Python 3.11+ (and offers to install it), downloads the latest release verified by SHA-256 and opens the TagTeam setup.</p>
       <div class="code-block">
         <button class="copy-btn" type="button" data-copy="install-cmd">Copy</button>
-        <pre id="install-cmd">git clone https://github.com/mop4r/tagteam "$HOME\.claude\skills\tagteam"
-python -I "$HOME\.claude\skills\tagteam\scripts\instalar.py"
-agy
-grok
-codex</pre>
+        <pre id="install-cmd">irm https://mop4r.github.io/tagteam/install.ps1 | iex</pre>
       </div>
-      <p>Sign in once to <code>agy</code>, <code>grok</code>, <code>codex</code> and <code>cursor-agent</code>, then keep working as usual. Every session shows up natively in <code>claude --resume</code>, the Antigravity sidebar, the <code>Agy CLI --resume</code> picker, <code>Grok --resume</code>, the Codex app, <code>Codex --resume</code> and <code>Cursor CLI --resume</code>.</p>
+      <p>The setup shows which AIs are installed on your PC, you check the ones to sync and pick the options (default folder, the same Claude environment in each AI, shortcuts, status line, handoff, folders that never leave Claude) and watch it install step by step. It installs the official <code>agy</code>, <code>grok</code> and <code>codex</code> CLIs only for the AIs you check. Sign in once to each CLI, then keep working: every session shows up natively in <code>claude --resume</code>, the Antigravity sidebar, the <code>Agy CLI --resume</code> picker, <code>Grok --resume</code>, the Codex app, <code>Codex --resume</code> and <code>Cursor CLI --resume</code>.</p>
+      <figure class="demo-frame">
+        <img src="assets/screens/monitor-en.png" width="1116" height="612" loading="lazy" alt="TagTeam monitor in the terminal: per-AI health, chats synced in each direction, recent runs and errors">
+        <figcaption>Open TagTeam again and it is a live monitor: health, chats per AI, recent runs and errors. Add or remove an AI, change options, repair, update or uninstall from there.</figcaption>
+      </figure>
 
       <ul class="feature-list">
         <li>

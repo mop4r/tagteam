@@ -42,7 +42,7 @@
     "inLanguage": "pt-BR",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "Windows 10, Windows 11",
-    "softwareVersion": "0.2.0",
+    "softwareVersion": "0.3.0",
     "license": "https://opensource.org/licenses/MIT",
     "url": "https://mop4r.github.io/tagteam/pt-br/",
     "codeRepository": "https://github.com/mop4r/tagteam",
@@ -100,17 +100,17 @@
     </section>
 
     <section id="instalar">
-      <h2>Instale em três comandos</h2>
-      <p>Requer Windows 10/11, Python 3.11+ e Claude Code. O instalador configura os hooks, espelha seu ambiente e instala os CLIs oficiais <code>agy</code>, <code>grok</code> e <code>codex</code> se faltarem (o Cursor é detectado quando instalado).</p>
+      <h2>Instale com um comando</h2>
+      <p>Requer Windows 10/11 e Claude Code. Cole no PowerShell: ele confere o Python 3.11+ (e oferece instalar), baixa a versão mais nova conferida pelo SHA-256 e abre a instalação do TagTeam.</p>
       <div class="code-block">
         <button class="copy-btn" type="button" data-copy="install-cmd-pt">Copiar</button>
-        <pre id="install-cmd-pt">git clone https://github.com/mop4r/tagteam "$HOME\.claude\skills\tagteam"
-python -I "$HOME\.claude\skills\tagteam\scripts\instalar.py"
-agy
-grok
-codex</pre>
+        <pre id="install-cmd-pt">irm https://mop4r.github.io/tagteam/install.ps1 | iex</pre>
       </div>
-      <p>Faça login uma vez no <code>agy</code>, no <code>grok</code>, no <code>codex</code> e no <code>cursor-agent</code> e trabalhe normalmente. Cada conversa aparece direto no <code>claude --resume</code>, na barra do Antigravity, no atalho <code>Agy CLI --resume</code>, no <code>Grok --resume</code>, no app do Codex, no <code>Codex --resume</code> e no <code>Cursor CLI --resume</code>.</p>
+      <p>A instalação mostra quais IAs estão no seu PC; você marca as que vão sincronizar, escolhe as opções (pasta padrão, o mesmo ambiente do Claude em cada IA, atalhos, status line, passagem, pastas que nunca saem do Claude) e acompanha passo a passo. Os CLIs oficiais <code>agy</code>, <code>grok</code> e <code>codex</code> só são instalados para as IAs marcadas. Faça login uma vez em cada CLI e trabalhe normalmente: cada conversa aparece direto no <code>claude --resume</code>, na barra do Antigravity, no atalho <code>Agy CLI --resume</code>, no <code>Grok --resume</code>, no app do Codex, no <code>Codex --resume</code> e no <code>Cursor CLI --resume</code>.</p>
+      <figure class="demo-frame">
+        <img src="../assets/screens/monitor-pt.png" width="1116" height="612" loading="lazy" alt="Monitor do TagTeam no terminal: saúde por IA, conversas em cada sentido, rodadas e falhas">
+        <figcaption>Abra o TagTeam de novo e ele vira um monitor ao vivo: saúde, conversas por IA, rodadas e falhas. Dali dá para acrescentar ou tirar uma IA, mudar opções, reparar, atualizar ou desinstalar.</figcaption>
+      </figure>
     </section>
 
     <section id="espelho">

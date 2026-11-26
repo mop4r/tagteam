@@ -441,7 +441,7 @@ def _linha_evento(e, agora):
         resultado = t("arquivos_n", n=len(e.get("mudou") or []))
     else:
         resultado = cor(t("mudancas_n", n=mudou), "verde") if mudou else cor(t("em_dia_ev"), "fraco")
-    return f"  {time.strftime('%H:%M:%S', time.localtime(e['ts']))}  {nome:<22} {resultado}  " \
+    return f"  {time.strftime('%H:%M:%S', time.localtime(e['ts']))}  {nome:<24} {resultado}  " \
            f"{cor(str(e.get('duracao_s', '')) + 's', 'fraco')}"
 
 

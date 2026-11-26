@@ -1,6 +1,6 @@
 ---
 name: tagteam
-description: Use when the user mentions TagTeam, switching between Claude Code, Gemini (Google Antigravity app or agy CLI) the Grok CLI and OpenAI Codex (Codex app and CLI) when a usage limit runs out, continuing a Claude conversation in Gemini, Grok or Codex (or one of theirs in Claude), conversations missing on one side, a "## Handoff to ..." message, ~/.gemini (GEMINI.md, config/skills.json, hooks.json), ~/.grok (AGENTS.md, config.toml, sessions), ~/.codex (AGENTS.md, hooks.json, codex resume), "trajectory not found" or "trajectory db is not initialized".
+description: Use when the user mentions TagTeam (its installer, monitor or tagteam.py, ~/.tagteam/config.json), switching between Claude Code, Gemini (Google Antigravity app or agy CLI), the Grok CLI, OpenAI Codex (Codex app and CLI) and Cursor when a usage limit runs out, adding or removing an AI from the sync, continuing a Claude conversation in Gemini, Grok or Codex (or one of theirs in Claude), conversations missing on one side, a "## Handoff to ..." message, ~/.gemini (GEMINI.md, config/skills.json, hooks.json), ~/.grok (AGENTS.md, config.toml, sessions), ~/.codex (AGENTS.md, hooks.json, codex resume), "trajectory not found" or "trajectory db is not initialized".
 ---
 
 # TagTeam: one conversation across Claude Code, Gemini, Grok, Codex and Cursor
@@ -17,11 +17,19 @@ Codex (app and CLI, sharing `~/.codex`) when one of them hits its usage limit. T
 - **Handoff:** near the limit, the agent writes "## Handoff to …" (Request, Done, In progress, Next step, Watch out).
 
 ## How to operate
-- Re-apply the environment (new plugin, new skill, new PC): `python -I scripts/instalar.py [--seco]`. The Claude
-  `SessionStart` hook already does it.
+- Setup and monitor: `python -I scripts/tagteam.py` (Start Menu: "TagTeam"). First run = wizard (pick AIs and options,
+  install with progress); afterwards a live monitor (health, chats per AI, runs, errors) with keys to sync now, dry run,
+  change AIs or options, repair, log, update, uninstall. `--simples` (numbered prompts), `--status` (print and exit).
+- What is synced and installed lives in `~/.tagteam/config.json` (`scripts/config.py`): conversations and environment
+  per AI, CLI installs, working folder, shortcuts (admin / no approval), status line, handoff and %, excluded folders.
+  No file = everything on, as before. `TAGTEAM_WORKSPACE` and `TAGTEAM_HANDOFF_THRESHOLD` still win.
+- Re-apply the environment (new plugin, new skill, new PC): `python -I scripts/instalar.py [--seco] [--progresso]`;
+  `--desinstalar` takes out everything TagTeam wrote (no conversation is deleted). The Claude `SessionStart` hook
+  already runs it.
 - Sync by hand: `python -I scripts/sincronizar.py [--direcao antigravity|claude|grok|claude-de-grok|codex|claude-de-codex|cursor|claude-de-cursor] [--sessao|--cascade|--grok|--codex|--cursor <id>] [--seco] [--forcar]`.
 - Tests: `python -m unittest discover -s scripts -p "test_*.py"`.
-- Log: `%TEMP%\tagteam\sincronizar.log`. State per PC: `~/.tagteam/estado-<PC>.json`.
+- Log: `%TEMP%\tagteam\sincronizar.log` (written in one block per run by `rodar.py`). State per PC:
+  `~/.tagteam/estado-<PC>.json`; one JSON line per run in `~/.tagteam/eventos-<PC>.jsonl` (what the monitor reads).
 
 ## Rules of the sync
 - A conversation that changed at the source is rewritten at the destination, never duplicated.
@@ -32,6 +40,8 @@ Codex (app and CLI, sharing `~/.codex`) when one of them hits its usage limit. T
   stays.
 - A copy deleted at the destination does not come back (only with `--forcar`). Automated Claude sessions (`claude -p`,
   SDK) are skipped.
+- An AI unchecked in `config.json` is skipped by the sync and its hook does nothing; sessions from an excluded folder
+  (and its subfolders) never leave Claude.
 
 ## When continuing a conversation from another AI
 Look for the final "## Handoff to …" message and follow its *Next step*. If there is none, first write those five lines

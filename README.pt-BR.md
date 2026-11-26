@@ -42,18 +42,51 @@ vai parar **escreve uma passagem de cinco linhas** para a próxima saber exatame
 
 ## ⚡ Começando
 
-> **Requisitos:** Windows 10/11, Python 3.11+, [Claude Code](https://claude.com/claude-code). Os apps do Antigravity e do
-> Codex são opcionais; o CLI `agy`, o Grok CLI e o CLI do Codex são instalados para você.
+> **Requisitos:** Windows 10/11 e [Claude Code](https://claude.com/claude-code). Python 3.11+ (o instalador oferece
+> instalar pelo winget). As outras IAs são opcionais: o TagTeam mostra quais você tem e instala os CLIs oficiais do
+> `agy`, do Grok e do Codex se você marcar.
+
+Cole no PowerShell:
+
+```powershell
+irm https://mop4r.github.io/tagteam/install.ps1 | iex
+```
+
+Ele baixa a versão mais nova (conferida pelo SHA-256 que o GitHub publica) e abre a instalação do TagTeam:
+
+1. **Escolha as IAs.** Mostra o que está instalado no seu PC; marque as que vão dividir as conversas com o Claude Code.
+2. **Escolha as opções.** Pasta padrão, o mesmo ambiente do Claude (CLAUDE.md, skills, plugins, MCP) em cada IA, atalhos
+   no Menu Iniciar (como administrador e sem pedir aprovação só se você quiser), o status line do uso, a passagem
+   automática e o seu %, e pastas cujas conversas nunca saem do Claude.
+3. **Acompanhe a instalação.** Cada passo com ✓ ou o motivo da falha; no fim, abra cada CLI uma vez para o login.
+
+<p align="center"><img src="assets/screens/assistente-pt.png" alt="Instalação do TagTeam: escolha quais IAs sincronizar com o Claude Code" width="88%"></p>
+
+### O monitor
+
+Abra o **TagTeam** pelo Menu Iniciar (ou rode de novo) e o mesmo programa vira um **monitor ao vivo**: saúde, conversas
+em cada sentido por IA, quando o hook de cada IA foi chamado, as rodadas das últimas 24 h e as falhas. Dali dá para
+sincronizar agora, simular, acrescentar ou tirar uma IA (uma que ficou de fora ou que você instalou depois), mudar as
+opções, reparar a instalação, abrir o log, atualizar o TagTeam ou desinstalar (saem hooks, atalhos e blocos gerados;
+nenhuma conversa é apagada).
+
+<p align="center"><img src="assets/screens/monitor-pt.png" alt="Monitor do TagTeam: saúde por IA, conversas em cada sentido, rodadas e falhas" width="88%"></p>
+
+Pronto: comece uma conversa em qualquer uma das cinco e abra outra; ela já está lá.
+
+<details>
+<summary><b>Instalar com git (ou sem as telas)</b></summary>
 
 ```powershell
 git clone https://github.com/mop4r/tagteam "$HOME\.claude\skills\tagteam"
-python -I "$HOME\.claude\skills\tagteam\scripts\instalar.py"   # pode rodar de novo quando quiser
-agy     # login uma vez
-grok    # login uma vez
-codex   # login uma vez
+python -I "$HOME\.claude\skills\tagteam\scripts\tagteam.py"            # instalação + monitor
+python -I "$HOME\.claude\skills\tagteam\scripts\tagteam.py" --simples  # perguntas numeradas, sem tela cheia
+python -I "$HOME\.claude\skills\tagteam\scripts\tagteam.py" --status   # imprime a saúde e sai
 ```
 
-Pronto: comece uma conversa em qualquer uma das cinco e abra outra; ela já está lá.
+Sem o `~/.tagteam/config.json` o TagTeam funciona como antes dele (todas as IAs, atalhos como administrador e sem pedir
+aprovação): uma instalação antiga não muda nada até você salvar opções no monitor.
+</details>
 
 ## 🧩 Como funciona
 

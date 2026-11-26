@@ -8,6 +8,7 @@
 - Architecture & internals: https://github.com/mop4r/tagteam/blob/main/docs/HOW-IT-WORKS.md
 - License: MIT
 - Requirements: Windows 10/11, Python 3.11+, zero external Python dependencies
+- Install: `irm https://mop4r.github.io/tagteam/install.ps1 | iex` in PowerShell (checks Python, downloads the latest release verified by SHA-256, opens the setup)
 
 ## What problem TagTeam solves
 
@@ -21,3 +22,4 @@ When Claude Code hits its 5-hour or 7-day usage limit mid-task, switching to Gem
 - Interactive resume pickers for `agy` (`agy_resume.py`) and Grok (`grok-resume.exe`) with Start Menu shortcuts.
 - Conflict-safe sync: continued copies are never overwritten; mirrors never bounce back; multi-PC path remapping.
 - 100% local, zero telemetry, zero API proxy.
+- Terminal setup wizard and live monitor (`tagteam.py`): pick which AIs to sync and the options (folder, shared environment, shortcuts, status line, handoff, excluded folders), install with progress, then watch health, chats per AI, recent runs and errors; add or remove an AI, repair, update or uninstall from the same screen. Options live in `~/.tagteam/config.json`.

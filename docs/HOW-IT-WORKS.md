@@ -28,7 +28,12 @@ each AI syncs with Claude, and whatever just arrived from one side is relayed to
 | `scripts/cursor.py` | reads and writes the Cursor CLI chat store (`~/.cursor/chats`) |
 | `scripts/gancho_cursor.py` | Cursor `stop`/`sessionEnd` hook (`~/.cursor/hooks.json`) |
 | `scripts/passagem.py`, `statusline.py` | handoff near the limit (Claude status line usage, Gemini quota API) |
-| `scripts/instalar.py` | environment mirror, hooks, CLIs, shortcuts (idempotent) |
+| `scripts/instalar.py` | environment mirror, hooks, CLIs, shortcuts: a list of steps that follows `config.json`, each one able to undo itself (idempotent) |
+| `scripts/config.py` | `~/.tagteam/config.json`: which AIs (chats / environment), CLI installs, folder, shortcuts, status line, handoff, excluded folders |
+| `scripts/tagteam.py`, `tela.py` | the setup wizard and live monitor in the terminal (stdlib only: ANSI + `msvcrt`) |
+| `scripts/saude.py` | what is installed, hook registered and last call, chats per direction, last runs, health checks |
+| `scripts/registro.py`, `rodar.py` | log and `eventos-<PC>.jsonl` written in whole blocks under a file lock |
+| `scripts/atualizar.py` | update from the latest GitHub release, on request, verified by SHA-256 |
 | `scripts/agy_resume.py`, `grok-resume/` | resume pickers for the `agy` and Grok CLIs |
 
 ## Claude Code
@@ -142,3 +147,43 @@ each AI syncs with Claude, and whatever just arrived from one side is relayed to
   with the text). TagTeam reads them **read-only** and sends them to Claude as "[Cursor] …" (the app fires the same
   `~/.cursor/hooks.json`). Claude → app is the app's own setting *Import Claude Code Conversations*: writing into the
   live app database would be fragile.
+
+## Setup, options and the monitor
+
+`tagteam.py` is both the installer and the monitor. Without `~/.tagteam/config.json` it runs the wizard: detects Claude
+Code and each AI (app and CLI, in the official installers' default paths), lets you check the AIs and the options,
+saves `config.json` and runs `instalar.py --progresso`, which prints one JSON line per step (the screen draws the
+progress from them; a step that fails does not stop the others). With the file, it is the monitor; it reads, every two
+seconds, only local files: `config.json`, the state file, `eventos-<PC>.jsonl` and the hook stamps.
+
+Who obeys `config.json`:
+- `sincronizar.py` skips every direction of an AI whose chats are unchecked, and never reads Claude sessions from an
+  excluded folder or its subfolders (matched on the Claude project folder name, which loses the difference between a
+  separator and `-`: when in doubt the session is excluded).
+- each hook stamps its last call (`%TEMP%\tagteam\gancho-<ai>.txt`) and does nothing for an unchecked AI.
+- the handoff reads the threshold (or that it is off); the status line too.
+- `instalar.py`: an unchecked AI loses its hook (the other hooks in the same file stay), its Start Menu shortcuts and
+  the blocks or files TagTeam generated (only a file that starts with TagTeam's header is deleted). Its CLI, the plugins
+  and MCP servers already copied, and every conversation stay. Shortcuts run as admin and without approval prompts only
+  when the options say so. `--desinstalar` does all of that for every AI and also removes the Claude hooks, the status
+  line (only TagTeam's), the TagTeam shortcut and `config.json`.
+
+Environment variables still win over the file (`TAGTEAM_WORKSPACE`, `TAGTEAM_HANDOFF_THRESHOLD`), so nothing changes for
+an install that predates it.
+
+## Log and events
+
+Hooks start `sincronizar.py` / `instalar.py` through `rodar.py`, which captures the whole output and appends it to the
+log in one block, under a file lock, rotating at 512 KB (before, two runs at the same time wrote into the same handle and
+their lines interleaved). Every sync run that took the lock, and every installer run that changed something, also
+appends one JSON line to `~/.tagteam/eventos-<PC>.jsonl`: arguments, duration, counters, exit code and the last error
+lines. The monitor's "where it came from" is derived from the arguments (`--grok`, `--codex`, `--cursor`, `--cascade`,
+`--sessao`, or none for a full run).
+
+## Install and update
+
+`docs/install.ps1` (served at `https://mop4r.github.io/tagteam/install.ps1`) finds Python 3.11+ by running each
+candidate with stdin closed and a timeout (offers winget if there is none), takes the latest release's
+`tagteam-<version>.zip`, checks it against the SHA-256 GitHub publishes for release assets, copies `SKILL.md`, `scripts/`,
+`references/`, `assets/`, the READMEs and the license to `~/.claude/skills/tagteam` and opens `tagteam.py`. The monitor's
+update does the same in Python (`atualizar.py`), only when asked; a git install is left to `git pull`.
