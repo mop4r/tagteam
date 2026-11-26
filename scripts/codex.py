@@ -13,11 +13,13 @@ Nada aqui grava nos bancos do Codex: tudo passa pela API, que o app e o CLI usam
 de importacao (esquecer/mover uma entrada), para a versao nova de uma conversa continuada nascer como conversa nova.
 """
 import contextlib
+import glob
 import json
 import os
 import queue
 import re
 import shutil
+import sqlite3
 import subprocess
 import threading
 import time
@@ -483,3 +485,38 @@ def _importar_lote(srv, lote, feitos, falhas):
             if isinstance(f, dict):
                 chave = normalizar(f["source"]) if isinstance(f.get("source"), str) else "?"
                 falhas[chave] = f"{f.get('subErrorType') or f.get('failureStage')}: {str(f.get('message'))[:200]}"
+
+
+def alinhar_datas(ids, home=None):
+    """O importador do Codex grava a data real em recency_at, mas em muitas sessoes deixa created_at/updated_at e o
+    mtime do rollout com a hora da importacao (empurrando conversas antigas para o topo do 'codex resume'). Alinha o
+    mtime do rollout (senao o app-server reverte o banco) e updated_at/created_at em state_*.sqlite."""
+    ids = [i for i in ids if isinstance(i, str) and i]
+    if not ids:
+        return 0
+    bancos = sorted(glob.glob(os.path.join(home or base(), "state_*.sqlite")))
+    if not bancos:
+        return 0
+    total = 0
+    with contextlib.closing(sqlite3.connect(bancos[-1], timeout=10)) as c:
+        cols = {r[1] for r in c.execute("pragma table_info(threads)")}
+        if not {"id", "created_at", "updated_at", "recency_at"}.issubset(cols):
+            return 0
+        com_ms = {"created_at_ms", "updated_at_ms", "recency_at_ms"}.issubset(cols)
+        com_rp = "rollout_path" in cols
+        sql = (
+            "update threads set updated_at = recency_at, created_at = min(created_at, recency_at)"
+            + (", updated_at_ms = recency_at_ms, created_at_ms = min(created_at_ms, recency_at_ms)" if com_ms else "")
+            + " where id = ? and recency_at > 0 and updated_at > recency_at + 60"
+        )
+        for tid in ids:
+            if com_rp:
+                row = c.execute("select recency_at, rollout_path from threads where id = ? and recency_at > 0",
+                                (tid,)).fetchone()
+                if row and row[1]:
+                    with contextlib.suppress(OSError):
+                        if os.path.getmtime(row[1]) > row[0] + 60:
+                            os.utime(row[1], (row[0], row[0]))
+            total += c.execute(sql, (tid,)).rowcount
+        c.commit()
+    return total

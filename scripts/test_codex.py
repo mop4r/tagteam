@@ -513,5 +513,30 @@ class TestGanchoCodex(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(temp, PASTA_GANCHO, "sincronizar.log")))
 
 
+class TestAlinharDatasCodex(unittest.TestCase):
+    def test_alinhar_datas_corrige_so_as_importadas_com_updated_at_inflado(self):
+        import sqlite3
+        temp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, temp, True)
+        r1 = os.path.join(temp, "r1.jsonl")
+        open(r1, "w", encoding="utf-8").close()
+        db = os.path.join(temp, "state_5.sqlite")
+        with sqlite3.connect(db) as c:
+            c.execute("create table threads (id text primary key, created_at int, updated_at int, "
+                      "recency_at int, created_at_ms int, updated_at_ms int, recency_at_ms int, rollout_path text)")
+            c.executemany("insert into threads values (?,?,?,?,?,?,?,?)", [
+                ("t1", 1795733275, 1795733275, 1787574617, 1795733275000, 1795733275000, 1787574617000, r1),  # inflada
+                ("t2", 1795731430, 1795732612, 1795732612, 1795731430000, 1795732612000, 1795732612000, ""),  # ja certa
+                ("t3", 1795733275, 1795733275, 1787574617, 1795733275000, 1795733275000, 1787574617000, ""),  # fora
+            ])
+        self.assertEqual(codex.alinhar_datas(["t1", "t2"], home=temp), 1)
+        self.assertEqual(int(os.path.getmtime(r1)), 1787574617)                            # mtime do rollout alinhado
+        with sqlite3.connect(db) as c:
+            rows = {r[0]: r[1:7] for r in c.execute("select * from threads")}
+        self.assertEqual(rows["t1"], (1787574617, 1787574617, 1787574617, 1787574617000, 1787574617000, 1787574617000))
+        self.assertEqual(rows["t2"], (1795731430, 1795732612, 1795732612, 1795731430000, 1795732612000, 1795732612000))
+        self.assertEqual(rows["t3"][1], 1795733275)                                        # nao listada: intocada
+
+
 if __name__ == "__main__":
     unittest.main()

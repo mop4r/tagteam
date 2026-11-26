@@ -620,11 +620,29 @@ def _preparar_para_codex(a, estado, cont, srv, ctx, caminho, sessao):
             "versao": anterior.get("versao", 0) + (1 if versao_nova else 0), "anteriores": anteriores}
 
 
+def _salvar_registro_codex(estado, p, tid):
+    rec = {"id": tid, "versao": p["versao"], "fonte_tamanho": p["marca"][0], "fonte_mtime": p["marca"][1],
+           "titulo": p["titulo"]}
+    anteriores = [x for x in p["anteriores"] if isinstance(x, str) and ID_RE.match(x)][-50:]
+    if anteriores:
+        rec["anteriores"] = anteriores
+    estado["importadas_codex"][p["sessao"]] = rec
+
+
+def _alinhar_datas_codex(importados):
+    if not importados:
+        return
+    try:
+        codex.alinhar_datas(importados)
+    except sqlite3.Error as e:
+        print(f"erro ao alinhar datas do Codex: {type(e).__name__}: {e}", file=sys.stderr)
+
+
 def _importar_pendentes(estado, cont, srv, pendentes):
     feitos, falhas = codex.importar(srv, [(p["prep"], p["cwd"], p["titulo"]) for p in pendentes],
                                     a_cada_lote=_renovar_trava)
     regs = codex.registros()
-    nomes = None
+    nomes, importados = None, []
     for p in pendentes:
         k = codex.normalizar(p["prep"])
         if k in falhas:
@@ -640,13 +658,11 @@ def _importar_pendentes(estado, cont, srv, pendentes):
         if antes.get("id") == tid and p["titulo"] != antes.get("titulo"):   # conversa nova ja nasce com o nome
             nomes = codex.listar(srv) if nomes is None else nomes
             _atualizar_nome_codex(srv, tid, (nomes.get(tid) or {}).get("name"), antes.get("titulo"), p["titulo"])
-        rec = {"id": tid, "versao": p["versao"], "fonte_tamanho": p["marca"][0], "fonte_mtime": p["marca"][1],
-               "titulo": p["titulo"]}
-        anteriores = [x for x in p["anteriores"] if isinstance(x, str) and ID_RE.match(x)][-50:]
-        if anteriores:
-            rec["anteriores"] = anteriores
-        estado["importadas_codex"][p["sessao"]] = rec
+        _salvar_registro_codex(estado, p, tid)
+        if k in feitos:
+            importados.append(tid)
         cont[p["rotulo"] if k in feitos else "c>x iguais"] += 1
+    _alinhar_datas_codex(importados)
     gravar_estado(estado)
 
 

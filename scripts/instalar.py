@@ -626,6 +626,13 @@ def criar_atalhos_codex(seco, mudou):
 # ---------------------------------------------------------------- Cursor CLI (atalhos)
 CURSOR_AGENT = os.path.join(os.environ.get("LOCALAPPDATA", ""), "cursor-agent", "cursor-agent.cmd")
 CURSOR_APP = os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "cursor", "Cursor.exe")
+CURSOR_APPS = tuple(os.path.join(os.environ.get(v, ""), "cursor", "Cursor.exe")
+                    for v in ("ProgramFiles", "ProgramFiles(x86)") if os.environ.get(v))
+
+
+def _cursor_app():
+    """Executavel do app do Cursor (instalacao por usuario ou em Program Files), ou None."""
+    return next((c for c in (CURSOR_APP, *CURSOR_APPS) if c and os.path.isfile(c)), None)
 
 
 def criar_atalhos_cursor(seco, mudou):
@@ -637,7 +644,7 @@ def criar_atalhos_cursor(seco, mudou):
     livre = _livre("--force --sandbox disabled --trust")
     comandos = {"Cursor CLI.lnk": f"& '{CURSOR_AGENT}'{livre}",
                 "Cursor CLI --resume.lnk": f"& '{CURSOR_AGENT}' --resume{livre}"}
-    gravar_atalhos(comandos, (CURSOR_APP if os.path.isfile(CURSOR_APP) else CURSOR_AGENT) + ",0", seco, mudou, "cursor")
+    gravar_atalhos(comandos, (_cursor_app() or CURSOR_AGENT) + ",0", seco, mudou, "cursor")
 
 
 # ---------------------------------------------------------------- Cursor (ambiente e gancho)
@@ -650,7 +657,7 @@ TIMEOUT_HOOK_CURSOR_S = 30
 
 
 def cursor_instalado():
-    return os.path.isdir(CURSOR_DIR) and (os.path.isfile(CURSOR_AGENT) or os.path.isfile(CURSOR_APP))
+    return os.path.isdir(CURSOR_DIR) and (os.path.isfile(CURSOR_AGENT) or bool(_cursor_app()))
 
 
 def comando_gancho_cursor():

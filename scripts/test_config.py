@@ -393,6 +393,20 @@ class TestComandosAtualizar(ComEstado):
         self.assertEqual(cmds["antigravity"], ["C:/l/agy.exe", "update"])
         self.assertEqual(cmds["cursor"][-1], "& 'C:/A B/x it''s.cmd' update")   # aspas simples dobradas
 
+    def test_cursor_app_acha_em_program_files_e_usa_no_icone(self):
+        pf = r"C:\Program Files\cursor\Cursor.exe"
+        gravados = []
+        with mock.patch.object(instalar, "CURSOR_APP", r"C:\nao\existe\Cursor.exe"), \
+                mock.patch.object(instalar, "CURSOR_APPS", (pf,)), \
+                mock.patch.object(instalar, "CURSOR_AGENT", r"C:\ca\cursor-agent.cmd"), \
+                mock.patch("os.path.isfile", lambda c: c in (pf, r"C:\ca\cursor-agent.cmd")), \
+                mock.patch("os.path.isdir", lambda _c: True), \
+                mock.patch.object(instalar, "gravar_atalhos",
+                                  lambda cmds, icone, *_a: gravados.append((cmds, icone))):
+            instalar.criar_atalhos_cursor(False, [])
+        self.assertEqual(len(gravados), 1)
+        self.assertEqual(gravados[0][1], pf + ",0")
+
 
 if __name__ == "__main__":
     unittest.main()
