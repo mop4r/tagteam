@@ -62,7 +62,8 @@ PASTA_ESTADO = config.pasta_estado()
 ESTADO = os.path.join(PASTA_ESTADO, f"estado-{PC}.json")
 MOLDE_CURSOR = os.path.join(PASTA_ESTADO, f"molde-cursor-{PC}.json")   # o Cursor exige partes de uma conversa nativa
 MOLDE_CURSOR_APP = os.path.join(PASTA_ESTADO, f"molde-cursor-app-{PC}.json")
-DIAS_APP_CURSOR = 30                # como o importador nativo do Cursor: so as sessoes dos ultimos 30 dias vao ao app
+DIAS_APP_CURSOR = 30                # como o importador nativo do Cursor: as sessoes dos ultimos 30 dias,
+MAX_APP_CURSOR = 50                 # no maximo as 50 mais recentes (a lista do app nao vira um despejo)
 TRAVA = os.path.join(PASTA_ESTADO, f".trava-{PC}")
 # "home" so do app-server filho: copias enxutas das sessoes do Claude com a pasta deste PC (codex.preparar)
 PREPARO = os.path.join(PASTA_ESTADO, f"codex-preparo-{PC}")
@@ -788,7 +789,7 @@ def _para_cursor_cli(a, estado, cont):
                 continue
             conv = claude_jsonl.ler_conversa(caminho, sessao)
             motivo = ("automaticas" if conv.entrypoint.startswith("sdk") else
-                      "espelhos" if _espelho(conv, sessao, estado, "cursor") else
+                      "espelhos" if _espelho_cursor(conv, sessao, estado, "cli") else
                       "vazias" if not any(t.papel == "usuario" for t in conv.turnos) else None)
             if motivo:
                 cont["c>u " + motivo] += 1
@@ -819,15 +820,39 @@ def _para_cursor_cli(a, estado, cont):
 
 
 # ---------------------------------------------------------------- Claude -> app do Cursor
+def _espelho_cursor(conv, sessao, estado, destino):
+    """Espelho de uma conversa que nasceu NESTE destino do Cursor ("cli" ou "app") e ninguem continuou no Claude. CLI
+    e app sao destinos diferentes (um nao lista as conversas do outro): o que veio do CLI vai ao app e vice-versa."""
+    if conv.entrypoint != para_claude.ORIGENS["cursor"][0]:
+        return False
+    item = next(((aid, r) for aid, r in estado["exportadas_cursor"].items() if r["sessao"] == sessao), None)
+    if item is None or len(conv.turnos) > item[1]["turnos"]:
+        return False
+    return _origem_cursor(item[0], item[1]) == destino
+
+
+def _origem_cursor(aid, rec):
+    """De onde veio a conversa do Cursor: o campo "de" (gravado desde 26/11) ou, nos registros antigos, se o id e de
+    uma conversa do CLI (pasta em ~/.cursor/chats)."""
+    if rec.get("de") in ("cli", "app"):
+        return rec["de"]
+    return "cli" if glob.glob(os.path.join(cursor.pasta_chats(), "*", aid)) else "app"
+
+
 def _sessoes_para_app(a, agora):
-    """(caminho, sessao) das sessoes do Claude dos ultimos DIAS_APP_CURSOR dias que passam no filtro da rodada."""
+    """(caminho, sessao) das MAX_APP_CURSOR sessoes do Claude mais recentes dos ultimos DIAS_APP_CURSOR dias que passam
+    no filtro da rodada (as que ja estao no app e sairam do corte so deixam de ser atualizadas)."""
     limite = agora - DIAS_APP_CURSOR * 86400
     saida = []
     for caminho in _sessoes_do_claude():
         sessao = os.path.basename(caminho)[:-6]
-        if ID_RE.match(sessao) and not _fora_do_filtro(a, sessao) and os.path.getmtime(caminho) >= limite:
-            saida.append((caminho, sessao))
-    return saida
+        if not ID_RE.match(sessao):
+            continue
+        quando = os.path.getmtime(caminho)
+        if quando >= limite:
+            saida.append((quando, caminho, sessao))
+    saida.sort(reverse=True)
+    return [(c, s) for _q, c, s in saida[:MAX_APP_CURSOR] if not _fora_do_filtro(a, s)]
 
 
 def para_cursor_app(a, estado, cont):
@@ -883,22 +908,33 @@ def _molde_app(c, estado, ctx):
     return ctx["molde"] or None
 
 
+def _app_sem_mudanca(a, rec, agora_msgs, fonte):
+    """Motivo para nao mexer na copia que ja esta no app (apagada la, ou a fonte nao mudou), ou None."""
+    if rec and agora_msgs is None and not a.forcar:
+        return "apagadas_no_app"
+    if rec and (rec.get("fonte_tamanho"), rec.get("fonte_mtime")) == fonte and not a.forcar:
+        return "iguais"
+    return None
+
+
+def _app_fica_de_fora(conv, sessao, estado):
+    """Motivo para a sessao nao ir ao app (automatica, veio do proprio app, vazia), ou None."""
+    if conv.entrypoint.startswith("sdk"):
+        return "automaticas"
+    if _espelho_cursor(conv, sessao, estado, "app"):
+        return "espelhos"
+    return None if any(t.papel == "usuario" for t in conv.turnos) else "vazias"
+
+
 def _sessao_para_app(a, estado, cont, c, ctx, caminho, sessao):
     imp = estado["importadas_cursor_app"]
     st = os.stat(caminho)
     fonte = (st.st_size, round(st.st_mtime, 3))
     rec = imp.get(sessao)
     agora_msgs = cursor_app.mensagens(c, rec["id"]) if rec else None
-    if rec and agora_msgs is None and not a.forcar:
-        cont["c>ua apagadas_no_app"] += 1
-        return
-    if rec and (rec.get("fonte_tamanho"), rec.get("fonte_mtime")) == fonte and not a.forcar:
-        cont["c>ua iguais"] += 1
-        return
-    conv = claude_jsonl.ler_conversa(caminho, sessao)
-    motivo = ("automaticas" if conv.entrypoint.startswith("sdk") else
-              "espelhos" if _espelho(conv, sessao, estado, "cursor") else
-              "vazias" if not any(t.papel == "usuario" for t in conv.turnos) else None)
+    motivo = _app_sem_mudanca(a, rec, agora_msgs, fonte)
+    conv = None if motivo else claude_jsonl.ler_conversa(caminho, sessao)
+    motivo = motivo or _app_fica_de_fora(conv, sessao, estado)
     if motivo:
         cont["c>ua " + motivo] += 1
         return
@@ -949,7 +985,8 @@ def _cursor_exportar(a, estado, cont, novas, ctx, aid, assin, ler):
     cwd = cwd_local(conv.cwd)
     ctx["versao_cc"] = ctx.get("versao_cc") or para_claude.versao_claude()
     para_claude.gravar_sessao(conv, sessao, para_claude.pasta_do_projeto(cwd), cwd, ctx["versao_cc"], "cursor")
-    exp[aid] = {"sessao": sessao, "versao": versao, "assinatura": assin, "turnos": len(conv.turnos)}
+    exp[aid] = {"sessao": sessao, "versao": versao, "assinatura": assin, "turnos": len(conv.turnos),
+                "de": ctx.get("de", "cli")}         # de qual destino do Cursor veio (o CLI e o app sao dois)
     gravar_estado(estado)
     novas.add(sessao)
 
@@ -989,7 +1026,7 @@ def cursor_para_claude(a, estado, cont, novas):
             continue
         try:
             conv, assin = cursor.ler_conversa_app(cid)
-            _cursor_exportar(a, estado, cont, novas, ctx, cid, assin, lambda c=conv: c)
+            _cursor_exportar(a, estado, cont, novas, dict(ctx, de="app"), cid, assin, lambda c=conv: c)
         except (OSError, ValueError, KeyError, sqlite3.Error) as e:
             cont["erro"] += 1
             print(f"erro na conversa {cid} (app do cursor -> claude): {type(e).__name__}: {e}", file=sys.stderr)

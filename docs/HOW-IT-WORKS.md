@@ -145,11 +145,20 @@ each AI syncs with Claude, and whatever just arrived from one side is relayed to
 - The Cursor **app** stores its own chats in `%APPDATA%\Cursor\User\globalStorage\state.vscdb` (table
   `cursorDiskKV`: `composerData:<id>`, `composerConvHeaders:<id>:<chunk>` with the message order, `bubbleId:<id>:<msg>`
   with the text). TagTeam reads them **read-only** and sends them to Claude as "[Cursor] …" (the app fires the same
-  `~/.cursor/hooks.json`). Claude → app would be the app's own setting *Import Claude Code Conversations* (writing into
-  the live app database would be fragile), but in Cursor 1.1.3 it does not work on Windows. Its `ClaudeCodeAgentRepository`
+  `~/.cursor/hooks.json`). Claude → app is written by TagTeam (`cursor_app.py`), because the app's own setting *Import
+  Claude Code Conversations* does not work on Windows in Cursor 1.1.3. Its `ClaudeCodeAgentRepository`
   looks for `<home>/.claude/projects/<cwd with "/" replaced by "-">`, where `cwd` is the workspace `fsPath`
   (`c:\Users\you\project`): the result contains `\` and `:` and never matches the folder Claude Code writes
   (`C--Users-you-project`, every non-alphanumeric character replaced), so the workspace is skipped silently.
+- `cursor_app.py` writes what the app writes for a chat: a `composerHeaders` row (the list), `composerData:<id>`,
+  `composerConvHeaders:<id>:000000` (message order) and one `bubbleId:<id>:<msg>` per message, all copied from a native
+  chat of the installed version (the template, cleaned of its text) with the text replaced. `conversationState` stays
+  empty: the app rebuilds the model context from the messages, so continuing a copy keeps the history. Only while the
+  app is closed; only a known `composerData._v`; only folders the app already lists; the 50 most recent sessions of the
+  last 30 days. The chat id is `uuid5(session, version)`; the copy carries a `tagteam` marker and the state records how
+  many messages it had, so an untouched copy never comes back, a continued one comes back as "[Cursor] …" and the next
+  Claude version becomes a new chat next to it. The Cursor CLI and the app are separate destinations: a chat born in one
+  reaches the other.
 
 ## Setup, options and the monitor
 

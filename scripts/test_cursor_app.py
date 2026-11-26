@@ -270,6 +270,15 @@ class TestFluxo(Base):
         with mock.patch.object(sincronizar, "cwd_local", lambda c: "D:\\outra"):
             self.assertEqual(self.rodar(estado)["c>ua fora_das_pastas_do_app"], 1)
 
+    def test_so_as_mais_recentes_vao(self):
+        mais_nova = "33333333-3333-3333-3333-333333333333"
+        shutil.copy(self.caminho, os.path.join(self.projetos, "C--w", mais_nova + ".jsonl"))
+        os.utime(self.caminho, (time.time() - 3600,) * 2)
+        estado = sincronizar.ler_estado()
+        with mock.patch.object(sincronizar, "MAX_APP_CURSOR", 1):
+            self.assertEqual(self.rodar(estado)["c>ua criadas"], 1)
+        self.assertEqual(list(estado["importadas_cursor_app"]), [mais_nova])
+
     def test_sessao_velha_nao_vai(self):
         os.utime(self.caminho, (time.time() - 40 * 86400,) * 2)
         self.assertEqual(sum(self.rodar(sincronizar.ler_estado()).values()), 0)
@@ -310,12 +319,24 @@ class TestFluxo(Base):
         dados["headerLog"]["count"] += 1
         self.assertFalse(sincronizar._copia_nao_continuada(cid, dados, {}))
 
-    def test_veio_do_app_nao_volta_para_o_app(self):
+    def test_veio_do_app_nao_volta_para_o_app_mas_vai_ao_cli(self):
         self.escrever(["oi", "tudo bem?"], entrypoint="cursor-import")
         estado = sincronizar.ler_estado()
         estado["exportadas_cursor"]["44444444-4444-4444-4444-444444444444"] = {
-            "sessao": self.SESSAO, "versao": 0, "turnos": 4, "assinatura": "x"}
+            "sessao": self.SESSAO, "versao": 0, "turnos": 4, "assinatura": "x", "de": "app"}
         self.assertEqual(self.rodar(estado)["c>ua espelhos"], 1)
+        conv = sincronizar.claude_jsonl.ler_conversa(self.caminho, self.SESSAO)
+        self.assertFalse(sincronizar._espelho_cursor(conv, self.SESSAO, estado, "cli"))     # o CLI recebe
+
+    def test_veio_do_cli_vai_ao_app(self):
+        self.escrever(["oi", "tudo bem?"], entrypoint="cursor-import")
+        estado = sincronizar.ler_estado()
+        aid = "55555555-5555-4555-8555-555555555555"
+        estado["exportadas_cursor"][aid] = {"sessao": self.SESSAO, "versao": 0, "turnos": 4, "assinatura": "x"}
+        os.makedirs(os.path.join(cursor.pasta_chats(), "abc", aid))        # registro antigo: a origem vem da pasta
+        self.assertEqual(self.rodar(estado)["c>ua criadas"], 1)
+        conv = sincronizar.claude_jsonl.ler_conversa(self.caminho, self.SESSAO)
+        self.assertTrue(sincronizar._espelho_cursor(conv, self.SESSAO, estado, "cli"))      # e nao volta ao CLI
 
 
 if __name__ == "__main__":

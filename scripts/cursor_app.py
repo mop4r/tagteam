@@ -27,6 +27,8 @@ CHUNK = 256
 TIMEOUT_S = 10
 CAMPOS_HEADERS = ("composerId", "workspaceId", "createdAt", "lastUpdatedAt", "isArchived", "isSubagent", "recency",
                   "checkpointAt", "subagentTypeName", "value")
+INSERIR_HEADER = ("insert into composerHeaders(composerId, workspaceId, createdAt, lastUpdatedAt, isArchived, isSubagent,"
+                  " recency, checkpointAt, subagentTypeName, value) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 
 
 class FormatoDesconhecido(RuntimeError):
@@ -206,8 +208,7 @@ def gravar(c, conv, cid, wid, ident, molde, agora_ms):
     linha, kv = montar(conv, cid, wid, ident, molde, agora_ms)
     with c:
         apagar(c, cid, commit=False)
-        c.execute(f"insert into composerHeaders({', '.join(CAMPOS_HEADERS)}) values ({', '.join('?' * len(CAMPOS_HEADERS))})",
-                  linha)
+        c.execute(INSERIR_HEADER, linha)
         c.executemany("insert into cursorDiskKV(key, value) values (?, ?)",
                       [(k, json.dumps(v, ensure_ascii=False)) for k, v in kv.items()])
     return sum(1 for k in kv if k.startswith("bubbleId:"))
