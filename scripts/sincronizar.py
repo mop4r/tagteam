@@ -913,6 +913,37 @@ def _codex(a, estado, cont, srv, fn, *args):
         print(f"codex: {e}", file=sys.stderr)
 
 
+# (direcao, ia, funcao, vai para o Claude): a ordem em que rodam. Para o Claude primeiro o que sai dele, depois o
+# que chega, e o que chegou segue para as outras na mesma rodada (_propagar)
+DIRECOES = (("antigravity", "antigravity", "para_antigravity", False), ("grok", "grok", "para_grok", False),
+            ("codex", "codex", "para_codex", False), ("cursor", "cursor", "para_cursor", False),
+            ("claude", "antigravity", "para_claude_", True), ("claude-de-grok", "grok", "grok_para_claude", True),
+            ("claude-de-codex", "codex", "codex_para_claude", True),
+            ("claude-de-cursor", "cursor", "cursor_para_claude", True))
+
+
+def ias_ativas(cfg):
+    """As IAs instaladas neste PC e marcadas para conversas no config.json."""
+    return {ia for ia, instalada in (("antigravity", bool(antigravity.bases())), ("grok", grok.instalado()),
+                                     ("codex", codex.instalado()), ("cursor", cursor.instalado()))
+            if instalada and config.conversas(cfg, ia)}
+
+
+def rodar_direcoes(a, estado, cont, srv, ativas):
+    """Cada direcao pedida (--direcao) das IAs ativas; devolve as sessoes que acabaram de chegar ao Claude."""
+    novas = set()
+    for direcao, ia, nome, para_o_claude in DIRECOES:
+        if a.direcao not in ("ambas", direcao) or ia not in ativas:
+            continue
+        fn = globals()[nome]
+        extra = (novas,) if para_o_claude else ()
+        if ia == "codex":
+            _codex(a, estado, cont, srv, fn, *extra)
+        else:
+            fn(a, estado, cont, *extra)
+    return novas
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--direcao", choices=("ambas", "antigravity", "claude", "grok", "claude-de-grok", "codex",
@@ -934,10 +965,7 @@ def main():
     if not 0 <= a.atraso <= 600:
         sys.exit("atraso fora de 0..600")
     time.sleep(a.atraso)
-    cfg = config.carregar()
-    ativas = {ia for ia, instalada in (("antigravity", bool(antigravity.bases())), ("grok", grok.instalado()),
-                                        ("codex", codex.instalado()), ("cursor", cursor.instalado()))
-              if instalada and config.conversas(cfg, ia)}
+    ativas = ias_ativas(config.carregar())
     if not ativas:
         print("nenhuma IA marcada para sincronizar esta instalada neste PC; nada a fazer")
         return 0
@@ -951,24 +979,7 @@ def main():
     srv = _CodexPreguicoso()
     try:
         estado = ler_estado()
-        d = a.direcao
-        if d in ("ambas", "antigravity") and "antigravity" in ativas:
-            para_antigravity(a, estado, cont)
-        if d in ("ambas", "grok") and "grok" in ativas:
-            para_grok(a, estado, cont)
-        if d in ("ambas", "codex") and "codex" in ativas:
-            _codex(a, estado, cont, srv, para_codex)
-        if d in ("ambas", "cursor") and "cursor" in ativas:
-            para_cursor(a, estado, cont)
-        novas = set()
-        if d in ("ambas", "claude") and "antigravity" in ativas:
-            para_claude_(a, estado, cont, novas)
-        if d in ("ambas", "claude-de-grok") and "grok" in ativas:
-            grok_para_claude(a, estado, cont, novas)
-        if d in ("ambas", "claude-de-codex") and "codex" in ativas:
-            _codex(a, estado, cont, srv, codex_para_claude, novas)
-        if d in ("ambas", "claude-de-cursor") and "cursor" in ativas:
-            cursor_para_claude(a, estado, cont, novas)
+        novas = rodar_direcoes(a, estado, cont, srv, ativas)
         # o que acabou de virar sessao do Claude segue para as outras IAs na mesma rodada (a de origem reconhece o
         # proprio espelho e nao o recebe de volta)
         if novas and not a.seco:

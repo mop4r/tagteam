@@ -221,15 +221,33 @@ def montar_settings_claude():
     if not isinstance(s, dict):
         return None
     antes = json.dumps(s, sort_keys=True)
+    algum = any(cfgmod.ligada(CFG, ia) for ia in cfgmod.IAS)
+    if not _hooks_claude(s, algum):
+        return None
+    linha = p(os.path.join(AQUI, "statusline.py"))
+    nosso_status = isinstance(s.get("statusLine"), dict) and linha in str(s["statusLine"].get("command", ""))
+    if CFG["statusline"] and algum and "statusLine" not in s:
+        s["statusLine"] = {"type": "command", "command": f'"{_python()}" -I "{linha}"'}
+    elif (not CFG["statusline"] or not algum) and nosso_status:     # so tira o nosso; o de quem ja tinha fica
+        s.pop("statusLine")
+    return None if json.dumps(s, sort_keys=True) == antes else s
+
+
+def _hooks_claude(s, algum):
+    """Poe (algum=True) ou tira os hooks do TagTeam nos eventos do Claude; os hooks dos outros ficam. False se o
+    settings.json tem um formato que nao se entende (nao mexe)."""
     gancho = p(os.path.join(AQUI, "gancho.py"))
     hooks = s.setdefault("hooks", {})
-    algum = any(cfgmod.ligada(CFG, ia) for ia in cfgmod.IAS)
+    if not isinstance(hooks, dict):
+        return False
+
+    def nosso(g):
+        return isinstance(g, dict) and any(isinstance(h, dict) and gancho in str(h.get("command", ""))
+                                           for h in g.get("hooks", []) or [])
     for evento in EVENTOS_CLAUDE:
         lista = hooks.setdefault(evento, [])
         if not isinstance(lista, list):
-            return None
-        nosso = lambda g: isinstance(g, dict) and any(  # noqa: E731
-            isinstance(h, dict) and gancho in str(h.get("command", "")) for h in g.get("hooks", []) or [])
+            return False
         if not algum:                               # nada marcado (ou desinstalando): o hook sai
             hooks[evento] = [g for g in lista if not nosso(g)]
             if not hooks[evento]:
@@ -238,13 +256,7 @@ def montar_settings_claude():
             lista.append({"hooks": [{"type": "command", "command": f'"{_python()}" -I "{gancho}"', "timeout": 15}]})
     if not hooks:
         s.pop("hooks")
-    linha = p(os.path.join(AQUI, "statusline.py"))
-    nosso_status = isinstance(s.get("statusLine"), dict) and linha in str(s["statusLine"].get("command", ""))
-    if CFG["statusline"] and algum and "statusLine" not in s:
-        s["statusLine"] = {"type": "command", "command": f'"{_python()}" -I "{linha}"'}
-    elif (not CFG["statusline"] or not algum) and nosso_status:     # so tira o nosso; o de quem ja tinha fica
-        s.pop("statusLine")
-    return None if json.dumps(s, sort_keys=True) == antes else s
+    return True
 
 
 def montar_cmd():

@@ -108,13 +108,18 @@ def carregar():
     pasta_env = os.environ.get("TAGTEAM_WORKSPACE", "")
     if _pasta_valida(pasta_env):
         cfg["pasta"] = pasta_env
-    pct_env = os.environ.get("TAGTEAM_HANDOFF_THRESHOLD", "")
-    try:
-        if pct_env and 1 <= float(pct_env) <= 100:
-            cfg["passagem_pct"] = float(pct_env)
-    except ValueError:
-        pass                    # valor invalido na variavel: fica o do arquivo
+    pct_env = _numero(os.environ.get("TAGTEAM_HANDOFF_THRESHOLD", ""))
+    if pct_env is not None and 1 <= pct_env <= 100:       # valor invalido na variavel: fica o do arquivo
+        cfg["passagem_pct"] = pct_env
     return cfg
+
+
+def _numero(texto):
+    """float do texto, ou None se nao for numero."""
+    try:
+        return float(texto) if texto else None
+    except ValueError:
+        return None
 
 
 def salvar(cfg):

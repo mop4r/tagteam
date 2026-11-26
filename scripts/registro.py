@@ -44,15 +44,15 @@ class _Trava:
         return self
 
     def __exit__(self, *_):
-        if self.fd is not None:
-            try:
-                if os.name == "nt":
-                    import msvcrt
-                    os.lseek(self.fd, 0, os.SEEK_SET)
-                    msvcrt.locking(self.fd, msvcrt.LK_UNLCK, 1)
-            except OSError:
-                pass                # a trava cai sozinha quando o arquivo fecha
-            self._fechar()
+        if self.fd is None:
+            return
+        try:
+            if os.name == "nt":             # no resto, fechar o arquivo ja solta o flock
+                import msvcrt
+                os.lseek(self.fd, 0, os.SEEK_SET)
+                msvcrt.locking(self.fd, msvcrt.LK_UNLCK, 1)
+        finally:
+            self._fechar()                  # se o destravar falhar, fechar o arquivo solta a trava assim mesmo
 
     def _fechar(self):
         if self.fd is not None:
