@@ -1,0 +1,212 @@
+"""O que esta instalado neste PC e como a sincronizacao vai: dados para o assistente e o monitor (tagteam.py).
+
+Tudo aqui so le arquivos locais (nada de rede, nada grava). As funcoes recebem o agora e os caminhos por parametro
+quando o teste precisa trocar; o resto vem dos mesmos modulos que o instalar.py e o sincronizar.py usam.
+"""
+import glob
+import json
+import os
+import re
+import shutil
+import sys
+import time
+
+AQUI = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, AQUI)
+import config  # noqa: E402
+import gancho  # noqa: E402
+import registro  # noqa: E402
+
+CASA = os.path.expanduser("~")
+LOCAL = os.environ.get("LOCALAPPDATA", "")
+CLAUDE = os.path.join(CASA, ".claude")
+PYTHON_MINIMO = (3, 11)
+HOOK_PARADO_S = 3 * 24 * 3600          # IA marcada cujo hook nao chama ha tanto tempo: vale olhar
+TRAVA_VELHA_S = 30 * 60                # igual ao sincronizar.py
+MAX_ARQUIVO = 20 * 1024 * 1024
+OK, AVISO, ERRO, INFO = "ok", "aviso", "erro", "info"
+
+# o que conta como "instalado", por parte (app e CLI), nos caminhos padrao dos instaladores oficiais
+PARTES = {
+    "claude": {"cli": [os.path.join(CASA, ".local", "bin", "claude.exe")], "which": "claude"},
+    "antigravity": {"app": [os.path.join(LOCAL, "Programs", "Antigravity", "Antigravity.exe")],
+                    "cli": [os.path.join(LOCAL, "agy", "bin", "agy.exe")]},
+    "grok": {"cli": [os.path.join(CASA, ".grok", "bin", "grok.exe")]},
+    "codex": {"cli": [os.path.join(LOCAL, "Programs", "OpenAI", "Codex", "bin", "codex.exe")], "which": "codex",
+              "app": glob.glob(os.path.join(LOCAL, "Packages", "OpenAI.Codex*"))},
+    "cursor": {"app": [os.path.join(LOCAL, "Programs", "cursor", "Cursor.exe")],
+               "cli": [os.path.join(LOCAL, "cursor-agent", "cursor-agent.cmd")]},
+}
+# a IA pode ser instalada pelo TagTeam (instalador oficial do CLI) mesmo sem estar no PC
+INSTALAVEL = {"antigravity": "CLI agy", "grok": "Grok CLI", "codex": "Codex CLI"}
+
+
+def detectar():
+    """{ia: {"app": bool, "cli": bool, "instalada": bool}} para o Claude e as quatro IAs."""
+    saida = {}
+    for ia, partes in PARTES.items():
+        d = {}
+        for parte in ("app", "cli"):
+            d[parte] = any(os.path.exists(c) for c in partes.get(parte, []))
+        if not d["cli"] and partes.get("which"):
+            d["cli"] = bool(shutil.which(partes["which"]))
+        d["instalada"] = d["app"] or d["cli"]
+        saida[ia] = d
+    return saida
+
+
+def _ler(caminho):
+    try:
+        if os.path.getsize(caminho) > MAX_ARQUIVO:
+            return ""
+        with open(caminho, encoding="utf-8", errors="replace") as f:
+            return f.read()
+    except OSError:
+        return ""
+
+
+def _json(caminho):
+    try:
+        return json.loads(_ler(caminho) or "null")
+    except ValueError:
+        return None
+
+
+def hook_registrado(ia):
+    """O hook de conversas do TagTeam esta no arquivo de hooks da IA (None: a IA nao tem onde registrar ainda)."""
+    if ia == "claude":
+        s = _json(os.path.join(CLAUDE, "settings.json"))
+        gancho_py = os.path.join(AQUI, "gancho.py").replace("\\", "/")
+        texto = json.dumps((s or {}).get("hooks") or {}) if isinstance(s, dict) else ""
+        return gancho_py in texto.replace("\\\\", "/")
+    arquivos = {"antigravity": (os.path.join(CASA, ".gemini", "config", "hooks.json"), '"claude-sync"'),
+                "grok": (os.path.join(CASA, ".grok", "config.toml"), "[[hooks.Stop]]"),
+                "codex": (os.path.join(os.environ.get("CODEX_HOME") or os.path.join(CASA, ".codex"), "hooks.json"),
+                          "gancho_codex.py"),
+                "cursor": (os.path.join(CASA, ".cursor", "hooks.json"), "gancho_cursor.py")}
+    caminho, marca = arquivos[ia]
+    if not os.path.isfile(caminho):
+        return None
+    return marca in _ler(caminho)
+
+
+def ultimo_gancho(ia):
+    """(instante, evento) da ultima chamada do hook da IA neste PC, ou (None, None)."""
+    caminho = os.path.join(gancho.PASTA, f"gancho-{ia}.txt")
+    try:
+        return os.path.getmtime(caminho), re.sub(r"[^A-Za-z]", "", _ler(caminho))[:30]
+    except OSError:
+        return None, None
+
+
+def contagens(estado):
+    """{ia: (do Claude para a IA, da IA para o Claude)} a partir do estado-<PC>.json do sincronizar."""
+    estado = estado if isinstance(estado, dict) else {}
+
+    def n(chave):
+        v = estado.get(chave)
+        return len(v) if isinstance(v, dict) else 0
+    imp = estado.get("importadas") if isinstance(estado.get("importadas"), dict) else {}
+    para_antigravity = sum(len(v) for v in imp.values() if isinstance(v, dict))
+    return {"antigravity": (para_antigravity, n("exportadas")), "grok": (n("importadas_grok"), n("exportadas_grok")),
+            "codex": (n("importadas_codex"), n("exportadas_codex")),
+            "cursor": (n("importadas_cursor"), n("exportadas_cursor"))}
+
+
+def arquivo_estado():
+    pc = re.sub(r"[^A-Za-z0-9_-]", "_", os.environ.get("COMPUTERNAME", "pc"))[:40]
+    return os.path.join(config.pasta_estado(), f"estado-{pc}.json")
+
+
+def ia_do_evento(ev):
+    """De onde veio a rodada (pelos argumentos): a IA do hook, "claude" para uma sessao do Claude, "completa" sem filtro."""
+    args = ev.get("args") or []
+    for flag, ia in (("--cascade", "antigravity"), ("--grok", "grok"), ("--codex", "codex"), ("--cursor", "cursor"),
+                     ("--sessao", "claude")):
+        if flag in args:
+            return ia
+    return "completa"
+
+
+def resumo_eventos(eventos, agora, janela_s=24 * 3600):
+    """Totais das rodadas de sincronizacao na janela: rodadas, com erro, e o que mudou (somando os contadores)."""
+    rodadas = [e for e in eventos if e.get("tipo") == "sincronizar" and agora - e["ts"] <= janela_s]
+    mudou = 0
+    for e in rodadas:
+        for chave, v in (e.get("cont") or {}).items():
+            if isinstance(v, int) and re.search(r"(novas|atualizadas|versao_nova|exportadas|importadas)$", chave):
+                mudou += v
+    com_erro = [e for e in rodadas if e.get("saida") not in (0, None) or (e.get("cont") or {}).get("erro")]
+    return {"rodadas": len(rodadas), "com_erro": len(com_erro), "mudou": mudou,
+            "ultima": rodadas[-1] if rodadas else None, "ultimo_erro": com_erro[-1] if com_erro else None}
+
+
+def checagens(cfg, detectado, agora=None, eventos=None):
+    """Lista de (assunto, nivel, texto) para o painel de saude. nivel: ok, aviso, erro ou info."""
+    agora = time.time() if agora is None else agora
+    eventos = registro.ler_eventos(500) if eventos is None else eventos
+    saida = []
+    if sys.version_info < PYTHON_MINIMO:
+        saida.append(("Python", ERRO, f"Python {sys.version.split()[0]}: o TagTeam precisa do 3.11 ou mais novo"))
+    _bruto, problema = config.ler_bruto()
+    if problema in ("invalida", "grande"):
+        saida.append(("Configuracao", ERRO, "config.json ilegivel: valendo os padroes ate salvar de novo"))
+    if not detectado["claude"]["instalada"] and not os.path.isdir(CLAUDE):
+        saida.append(("Claude Code", ERRO, "Claude Code nao encontrado: ele e o centro da sincronizacao"))
+    elif hook_registrado("claude") is False and any(config.ligada(cfg, ia) for ia in config.IAS):
+        saida.append(("Claude Code", ERRO, "hooks do TagTeam fora do settings.json do Claude: rode o reparo"))
+    trava = os.path.join(config.pasta_estado(), f".trava-{registro.PC}")
+    if os.path.exists(trava):
+        idade = agora - os.path.getmtime(trava)
+        saida.append(("Sincronizacao", AVISO if idade > TRAVA_VELHA_S else INFO,
+                      f"trava presa ha {idade / 60:.0f} min (a proxima rodada limpa)" if idade > TRAVA_VELHA_S
+                      else "sincronizando agora"))
+    pendentes = glob.glob(os.path.join(gancho.PASTA, "pendente-*"))
+    pendentes = [p for p in pendentes if agora - os.path.getmtime(p) < 2 * gancho.INTERVALO_S]
+    if pendentes:
+        saida.append(("Sincronizacao", INFO, f"{len(pendentes)} rodada(s) agendada(s) para o fim do intervalo de 2 min"))
+    res = resumo_eventos(eventos, agora)
+    if res["ultimo_erro"]:
+        erro = (res["ultimo_erro"].get("erros") or ["veja o log"])[-1]
+        saida.append(("Sincronizacao", AVISO, f"{res['com_erro']} rodada(s) com erro em 24 h; ultima: {erro[:160]}"))
+    for ia in config.IAS:
+        nome = config.NOMES[ia]
+        if not config.ligada(cfg, ia):
+            continue
+        if not detectado[ia]["instalada"]:
+            saida.append((nome, AVISO, "marcada, mas nao esta instalada neste PC"))
+            continue
+        if config.conversas(cfg, ia):
+            reg = hook_registrado(ia)
+            if reg is False:
+                saida.append((nome, ERRO, "hook de conversas fora do lugar: rode o reparo"))
+            quando, _ev = ultimo_gancho(ia)
+            if quando is None:
+                saida.append((nome, INFO, "hook ainda nao foi chamado neste PC (abra uma conversa nela)"))
+            elif agora - quando > HOOK_PARADO_S:
+                saida.append((nome, INFO, f"hook nao e chamado ha {(agora - quando) / 86400:.0f} dias"))
+    if not any(n in (ERRO, AVISO) for _a, n, _t in saida):
+        saida.insert(0, ("Geral", OK, "tudo certo"))
+    return saida
+
+
+def painel(cfg=None, agora=None):
+    """Tudo o que o monitor mostra, de uma vez (le os arquivos uma vez por atualizacao)."""
+    cfg = config.carregar() if cfg is None else cfg
+    agora = time.time() if agora is None else agora
+    detectado = detectar()
+    eventos = registro.ler_eventos(500)
+    estado = _json(arquivo_estado())
+    cont = contagens(estado)
+    ias = {}
+    for ia in config.IAS:
+        quando, ev = ultimo_gancho(ia)
+        ias[ia] = {"nome": config.NOMES[ia], "instalada": detectado[ia]["instalada"], "app": detectado[ia]["app"],
+                   "cli": detectado[ia]["cli"], "conversas": config.conversas(cfg, ia),
+                   "ambiente": config.ambiente(cfg, ia), "para": cont[ia][0], "de": cont[ia][1],
+                   "gancho_quando": quando, "gancho_evento": ev,
+                   "erros_24h": sum(1 for e in eventos if ia_do_evento(e) == ia and agora - e["ts"] <= 86400
+                                    and (e.get("saida") not in (0, None) or (e.get("cont") or {}).get("erro")))}
+    return {"agora": agora, "cfg": cfg, "detectado": detectado, "ias": ias, "eventos": eventos[-30:],
+            "resumo": resumo_eventos(eventos, agora),
+            "checagens": checagens(cfg, detectado, agora, eventos)}
