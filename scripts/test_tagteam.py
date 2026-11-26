@@ -226,6 +226,15 @@ class TestAtualizar(unittest.TestCase):
     def setUp(self):
         self.pasta = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.pasta, True)
+        with open(os.path.join(self.pasta, "SKILL.md"), "w", encoding="utf-8") as f:
+            f.write("---\nname: tagteam\ndescription: x\n---\n")
+
+    def test_pasta_que_nao_e_do_tagteam_nao_e_tocada(self):
+        with open(os.path.join(self.pasta, "SKILL.md"), "w", encoding="utf-8") as f:
+            f.write("---\nname: outra-skill\n---\n")
+        with self.assertRaises(atualizar.ErroAtualizacao):
+            atualizar.aplicar(_pacote({"tagteam/SKILL.md": "x", "tagteam/scripts/a.py": "x"}), self.pasta)
+        self.assertFalse(os.path.exists(os.path.join(self.pasta, "scripts")))
 
     def release(self, pacote, digest=None, nome="tagteam-v0.4.0.zip", url="https://github.com/x/y.zip"):
         digest = digest or "sha256:" + hashlib.sha256(pacote).hexdigest()

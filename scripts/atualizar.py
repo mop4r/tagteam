@@ -103,11 +103,23 @@ def _membros(z):
     return saida
 
 
+def eh_pasta_do_tagteam(pasta):
+    """A pasta e uma instalacao do TagTeam: o SKILL.md dela se chama tagteam (uma copia adaptada nao e sobrescrita)."""
+    try:
+        with open(os.path.join(pasta, "SKILL.md"), encoding="utf-8") as f:
+            cabeca = f.read(2000)
+    except OSError:
+        return False
+    return re.search(r"^name:\s*tagteam\s*$", cabeca, flags=re.M) is not None
+
+
 def aplicar(dado, pasta_skill):
     """Extrai num temporario e copia por cima da pasta do TagTeam (arquivo por arquivo: um hook rodando nao impede).
     Devolve quantos arquivos foram escritos."""
     if os.path.isdir(os.path.join(pasta_skill, ".git")):
         raise ErroAtualizacao("instalado com git: atualize com 'git pull' na pasta do TagTeam")
+    if not eh_pasta_do_tagteam(pasta_skill):
+        raise ErroAtualizacao("esta pasta nao e uma instalacao do TagTeam (SKILL.md sem name: tagteam); nada foi mudado")
     with zipfile.ZipFile(io.BytesIO(dado)) as z:
         membros = _membros(z)
         temp = tempfile.mkdtemp(prefix="tagteam-novo-")
