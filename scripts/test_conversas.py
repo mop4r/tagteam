@@ -516,6 +516,21 @@ class TestTrava(unittest.TestCase):
         self.assertEqual(sincronizar._argumentos_da_fila(["--atraso", "125", "--sessao", "x"]), ["--sessao", "x"])
         self.assertEqual(sincronizar._argumentos_da_fila(["--atraso=9", "--forcar"]), ["--forcar"])
 
+    def test_fila_apagada_no_meio_nao_quebra_nem_deixa_trava_orfa(self):
+        self.assertTrue(sincronizar.pegar_trava())
+        real = sincronizar.pegar_trava
+
+        def pegar_apos_sumir_fila():
+            for n in os.listdir(self.pasta):
+                if n.startswith(".fila"):
+                    os.remove(os.path.join(self.pasta, n))
+            os.remove(sincronizar.TRAVA)
+            return real()
+
+        with mock.patch.object(sincronizar, "pegar_trava", side_effect=pegar_apos_sumir_fila):
+            self.assertTrue(sincronizar.esperar_trava(["--sessao", "x"], prazo_s=5, pausa_s=0.01))
+        self.assertTrue(os.path.exists(sincronizar.TRAVA))
+
 
 if __name__ == "__main__":
     unittest.main()

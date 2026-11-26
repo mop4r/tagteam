@@ -28,6 +28,7 @@ entra na hora. Antigravity -> Claude le o app e o CLI e grava em ~/.claude/proje
 Estado de cada PC em ~/.tagteam/estado-<PC>.json (TAGTEAM_STATE_DIR troca a pasta).
 """
 import argparse
+import contextlib
 import glob
 import hashlib
 import json
@@ -145,11 +146,16 @@ def gravar_estado(estado):
     os.replace(tmp, ESTADO)
 
 
+def _remover_se_velha(caminho, limite_s):
+    with contextlib.suppress(FileNotFoundError):
+        if time.time() - os.path.getmtime(caminho) > limite_s:
+            os.remove(caminho)
+
+
 def pegar_trava():
     os.makedirs(PASTA_ESTADO, exist_ok=True)
     try:
-        if os.path.exists(TRAVA) and time.time() - os.path.getmtime(TRAVA) > TRAVA_VELHA_S:
-            os.remove(TRAVA)
+        _remover_se_velha(TRAVA, TRAVA_VELHA_S)
         fd = os.open(TRAVA, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
         os.write(fd, str(os.getpid()).encode())
         os.close(fd)
@@ -167,8 +173,7 @@ def esperar_trava(argumentos, prazo_s=None, pausa_s=2.0):
     chave = hashlib.sha256(" ".join(argumentos).encode()).hexdigest()[:16]
     fila = os.path.join(PASTA_ESTADO, f".fila-{PC}-{chave}")
     try:
-        if os.path.exists(fila) and time.time() - os.path.getmtime(fila) > TRAVA_VELHA_S:
-            os.remove(fila)
+        _remover_se_velha(fila, TRAVA_VELHA_S)
         os.close(os.open(fila, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
     except FileExistsError:
         return False
@@ -180,7 +185,8 @@ def esperar_trava(argumentos, prazo_s=None, pausa_s=2.0):
                 return True
         return False
     finally:
-        os.remove(fila)
+        with contextlib.suppress(FileNotFoundError):
+            os.remove(fila)
 
 
 def _argumentos_da_fila(argv):
@@ -198,7 +204,7 @@ def _argumentos_da_fila(argv):
 
 def _renovar_trava():
     """Rodada longa (1a importacao para o Codex num PC) nao deixa a trava parecer abandonada."""
-    if os.path.exists(TRAVA):
+    with contextlib.suppress(FileNotFoundError):
         os.utime(TRAVA)
 
 
@@ -1162,8 +1168,9 @@ def main():
         return 1 if cont["erro"] else 0
     finally:
         srv.fechar()
-        if not a.seco and os.path.exists(TRAVA):
-            os.remove(TRAVA)
+        if not a.seco:
+            with contextlib.suppress(FileNotFoundError):
+                os.remove(TRAVA)
 
 
 RODADA = {}

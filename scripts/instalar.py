@@ -18,6 +18,7 @@ Usage: python -I instalar.py [--seco] [--progresso] [--desinstalar]
   --desinstalar  takes out everything TagTeam wrote (hooks, shortcuts, generated blocks); no conversation is deleted
 """
 import argparse
+import contextlib
 import glob
 import json
 import os
@@ -963,8 +964,9 @@ def passo_atualizar_clis(seco, mudou, agora=None, rodar=None):
     os.makedirs(cfgmod.pasta_estado(), exist_ok=True)
     trava = _carimbo_atualizar() + ".trava"
     try:
-        if os.path.exists(trava) and agora - os.path.getmtime(trava) > TRAVA_ATUALIZAR_VELHA_S:
-            os.remove(trava)
+        with contextlib.suppress(FileNotFoundError):
+            if agora - os.path.getmtime(trava) > TRAVA_ATUALIZAR_VELHA_S:
+                os.remove(trava)
         os.close(os.open(trava, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
     except FileExistsError:
         return                                      # outra sessao esta atualizando agora
@@ -985,7 +987,8 @@ def passo_atualizar_clis(seco, mudou, agora=None, rodar=None):
         with open(_carimbo_atualizar(), "w", encoding="utf-8") as f:
             json.dump({"quando": time.strftime("%Y-%m-%d %H:%M:%S"), "falhas": falhas}, f)
     finally:
-        os.remove(trava)
+        with contextlib.suppress(FileNotFoundError):
+            os.remove(trava)
 
 
 # (ia, titulo, funcao), na ordem em que rodam. ia "tagteam" = do proprio TagTeam.

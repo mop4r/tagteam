@@ -365,6 +365,19 @@ class TestAtualizarClis(ComEstado):
         self.assertFalse(config.PADRAO_LEGADO["atualizar_clis"])
         self.assertTrue(config.PADRAO_NOVO["atualizar_clis"])
 
+    def test_trava_removida_no_meio_nao_falha_o_passo(self):
+        trava = instalar._carimbo_atualizar() + ".trava"
+        base = self.rodar()
+
+        def rodar_apagando_trava(cmd):
+            if os.path.exists(trava):
+                os.remove(trava)
+            return base(cmd)
+
+        instalar.passo_atualizar_clis(False, [], agora=1000.0, rodar=rodar_apagando_trava)
+        self.assertEqual(sorted(self.rodados), ["codex", "grok"])
+        self.assertTrue(os.path.isfile(instalar._carimbo_atualizar()))
+
 
 class TestComandosAtualizar(ComEstado):
     def test_so_os_clis_marcados_e_instalados(self):
