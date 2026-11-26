@@ -19,7 +19,7 @@ class ComEstado(unittest.TestCase):
     def setUp(self):
         self.pasta = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.pasta, True)
-        env = {k: v for k, v in os.environ.items() if k not in ("TAGTEAM_WORKSPACE", "TAGTEAM_HANDOFF_THRESHOLD")}
+        env = {k: v for k, v in os.environ.items() if k not in ("TAGTEAM_WORKSPACE", config.ENV_LIMIAR)}
         env["TAGTEAM_STATE_DIR"] = self.pasta
         p = mock.patch.dict(os.environ, env, clear=True)
         p.start()
@@ -67,11 +67,11 @@ class TestConfig(ComEstado):
         self.gravar_cfg({"passagem_pct": 80, "pasta": self.pasta})
         outra = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, outra, True)
-        with mock.patch.dict(os.environ, {"TAGTEAM_HANDOFF_THRESHOLD": "10", "TAGTEAM_WORKSPACE": outra}):
+        with mock.patch.dict(os.environ, {config.ENV_LIMIAR: "10", "TAGTEAM_WORKSPACE": outra}):
             cfg = config.carregar()
         self.assertEqual(cfg["passagem_pct"], 10)
         self.assertEqual(cfg["pasta"], outra)
-        with mock.patch.dict(os.environ, {"TAGTEAM_HANDOFF_THRESHOLD": "abc"}):
+        with mock.patch.dict(os.environ, {config.ENV_LIMIAR: "abc"}):
             self.assertEqual(config.carregar()["passagem_pct"], 80)
 
     def test_salvar_e_ler_de_volta_sem_sobra_de_temporario(self):
@@ -83,7 +83,7 @@ class TestConfig(ComEstado):
         self.assertEqual([n for n in os.listdir(self.pasta) if n.endswith(".tmp")], [])
 
     def test_pasta_inexistente_cai_na_home(self):
-        self.assertEqual(config.pasta_trabalho({"pasta": "C:\\nao\\existe\\mesmo"}), os.path.expanduser("~"))
+        self.assertEqual(config.pasta_trabalho({"pasta": "C:\\nao\\existe\\mesmo"}), config.PASTA_PADRAO)
         self.assertEqual(config.pasta_trabalho({"pasta": self.pasta}), self.pasta)
 
     def test_projeto_excluido_pela_pasta_e_subpastas(self):

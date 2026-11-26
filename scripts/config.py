@@ -18,11 +18,15 @@ VERSAO = 1
 MAX_CONFIG = 64 * 1024
 MAX_PASTAS_EXCLUIDAS = 200
 MAX_CAMINHO = 1024
+# padroes desta instalacao (uma copia adaptada do TagTeam muda so estas tres linhas)
+PASTA_PADRAO = os.path.expanduser("~")                                  # pasta de trabalho sem "pasta" no config
+ESTADO_PADRAO = os.path.join(os.path.expanduser("~"), ".tagteam")       # sem TAGTEAM_STATE_DIR
+ENV_LIMIAR = "TAGTEAM_HANDOFF_THRESHOLD"                                # variavel que troca o limite da passagem
 IDIOMAS = ("auto", "pt", "en")
 
 
 def pasta_estado():
-    return os.environ.get("TAGTEAM_STATE_DIR") or os.path.join(os.path.expanduser("~"), ".tagteam")
+    return os.environ.get("TAGTEAM_STATE_DIR") or ESTADO_PADRAO
 
 
 def caminho():
@@ -108,7 +112,7 @@ def carregar():
     pasta_env = os.environ.get("TAGTEAM_WORKSPACE", "")
     if _pasta_valida(pasta_env):
         cfg["pasta"] = pasta_env
-    pct_env = _numero(os.environ.get("TAGTEAM_HANDOFF_THRESHOLD", ""))
+    pct_env = _numero(os.environ.get(ENV_LIMIAR, ""))
     if pct_env is not None and 1 <= pct_env <= 100:       # valor invalido na variavel: fica o do arquivo
         cfg["passagem_pct"] = pct_env
     return cfg
@@ -139,7 +143,7 @@ def salvar(cfg):
 
 def pasta_trabalho(cfg):
     pasta = cfg.get("pasta") or ""
-    return pasta if pasta and os.path.isdir(pasta) else os.path.expanduser("~")
+    return pasta if pasta and os.path.isdir(pasta) else PASTA_PADRAO
 
 
 def conversas(cfg, ia):
