@@ -36,6 +36,7 @@ def banco(caminho, v=18, colunas=cursor_app.CAMPOS_HEADERS):
     db = sqlite3.connect(caminho)
     db.execute("create table cursorDiskKV (key text unique on conflict replace, value blob)")
     db.execute("create table ItemTable (key text unique on conflict replace, value blob)")
+    # nosemgrep: formatted-sql-query, sqlalchemy-execute-raw-query -- so nomes de coluna constantes do teste (banco descartavel)
     db.execute(f"create table composerHeaders ({', '.join(c + (' text primary key' if c == 'composerId' else '') for c in colunas)})")
     bolhas = [("u1", 1, SEGREDO), ("a1", 2, "resposta " + SEGREDO)]
     for bid, tipo, texto in bolhas:
