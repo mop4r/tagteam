@@ -932,10 +932,13 @@ def ias_ativas(cfg):
 def rodar_direcoes(a, estado, cont, srv, ativas):
     """Cada direcao pedida (--direcao) das IAs ativas; devolve as sessoes que acabaram de chegar ao Claude."""
     novas = set()
+    funcoes = {"para_antigravity": para_antigravity, "para_grok": para_grok, "para_codex": para_codex,
+               "para_cursor": para_cursor, "para_claude_": para_claude_, "grok_para_claude": grok_para_claude,
+               "codex_para_claude": codex_para_claude, "cursor_para_claude": cursor_para_claude}
     for direcao, ia, nome, para_o_claude in DIRECOES:
         if a.direcao not in ("ambas", direcao) or ia not in ativas:
             continue
-        fn = globals()[nome]
+        fn = funcoes[nome]
         extra = (novas,) if para_o_claude else ()
         if ia == "codex":
             _codex(a, estado, cont, srv, fn, *extra)

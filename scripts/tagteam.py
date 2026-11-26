@@ -285,6 +285,7 @@ def tela_excluidas(cfg):
 # ---------------------------------------------------------------- instalacao com progresso
 def rodar_instalador(extra=()):
     """Roda o instalar.py --progresso e desenha cada passo. Devolve True se terminou sem falha."""
+    # nosemgrep: python36-compatibility-Popen1, python36-compatibility-Popen2 -- o TagTeam exige Python 3.11+
     proc = subprocess.Popen([sys.executable, "-I", os.path.join(AQUI, "instalar.py"), "--progresso", *extra],
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL,
                             text=True, encoding="utf-8", errors="replace")
