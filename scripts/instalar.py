@@ -959,7 +959,23 @@ def main():
     a = ap.parse_args()
     if a.desinstalar:
         CFG = desligar_tudo(CFG)
-    mudou, falhou = rodar_passos(a.seco, _aviso_json if a.progresso else None)
+    import time
+    inicio = time.time()
+    erros = []
+
+    def aviso(*dados):
+        if dados[4].startswith("erro"):
+            erros.append(f"{dados[3]}: {dados[4]}")
+        if a.progresso:
+            _aviso_json(*dados)
+    mudou, falhou = rodar_passos(a.seco, aviso)
+    if not a.seco and (mudou or erros or a.desinstalar):    # SessionStart sem nada novo nao vira evento
+        import registro
+        try:
+            registro.evento({"tipo": "desinstalar" if a.desinstalar else "instalar", "mudou": mudou[:30],
+                             "duracao_s": round(time.time() - inicio, 1), "erros": erros[:8], "saida": int(falhou)})
+        except OSError as e:                       # o evento e so para o monitor; a instalacao ja foi feita
+            print(f"evento nao gravado: {type(e).__name__}: {e}", file=sys.stderr)
     if a.desinstalar and not a.seco and not falhou and cfgmod.existe():
         os.remove(cfgmod.caminho())                # abrir o tagteam.py de novo = assistente de instalacao
     if not a.progresso:

@@ -947,6 +947,7 @@ def main():
             return 0
     from collections import Counter
     cont = Counter()
+    RODADA["cont"] = cont                          # o evento da rodada (registro.py) le daqui no fim
     srv = _CodexPreguicoso()
     try:
         estado = ler_estado()
@@ -981,5 +982,27 @@ def main():
             os.remove(TRAVA)
 
 
+RODADA = {}
+
+
+def rodar_e_registrar():
+    """main() e, se a rodada chegou a sincronizar (pegou a trava), uma linha em eventos-<PC>.jsonl para o monitor:
+    argumentos, duracao, contadores, codigo de saida e as ultimas linhas de erro."""
+    import registro
+    inicio = time.time()
+    rabo = sys.stderr = registro.Rabo(sys.stderr)
+    saida = 1                                      # se main() estourar, o evento diz que falhou
+    try:
+        saida = main()
+        return saida
+    finally:
+        if RODADA:
+            try:
+                registro.evento({"tipo": "sincronizar", "args": sys.argv[1:], "duracao_s": round(time.time() - inicio, 1),
+                                 "cont": dict(RODADA["cont"]), "erros": rabo.erros(), "saida": saida})
+            except OSError as e:               # disco cheio ou sem permissao: o log ainda tem a saida da rodada
+                print(f"evento nao gravado: {type(e).__name__}: {e}", file=sys.__stderr__)
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(rodar_e_registrar())

@@ -74,7 +74,9 @@ class TestGancho(unittest.TestCase):
         with mock.patch.object(gancho.subprocess, "run") as run, mock.patch.object(gancho.subprocess, "Popen") as popen:
             gancho.lancar(["--grok", SESSAO], esperar=True)
             run.assert_called_once()
-            self.assertEqual(run.call_args.kwargs["timeout"], gancho.PRAZO_ESPERANDO_S)
+            self.assertEqual(run.call_args.kwargs["timeout"], gancho.PRAZO_ESPERANDO_S + gancho.FOLGA_RODAR_S)
+            comando = run.call_args.args[0]          # o prazo de verdade quem aplica e o rodar.py, no script
+            self.assertEqual(comando[comando.index("--prazo") + 1], str(gancho.PRAZO_ESPERANDO_S))
             popen.assert_not_called()
             run.side_effect = gancho.subprocess.TimeoutExpired("x", 1)
             gancho.lancar(["--grok", SESSAO], esperar=True)
