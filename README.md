@@ -77,7 +77,8 @@ It downloads the latest release (checked against the SHA-256 GitHub publishes fo
 1. **Pick the AIs.** It shows what is installed on your PC; check the ones that should share conversations with Claude Code.
 2. **Pick the options.** Default folder, the same Claude environment (CLAUDE.md, skills, plugins, MCP) in each AI, Start
    Menu shortcuts (as admin and without approval prompts only if you say so), the usage status line, the automatic
-   handoff and its %, and folders whose conversations must never leave Claude.
+   handoff and its %, folders whose conversations must never leave Claude, and **keeping the `agy`, Grok, Codex and
+   Cursor CLIs up to date by themselves** (their own `update` command, once a day, in the background).
 3. **Watch it install.** Each step with a ✓ or the reason it failed; then open each CLI once to sign in.
 
 <p align="center"><img src="assets/screens/assistente-en.png" alt="TagTeam setup: choose which AIs to sync with Claude Code" width="88%"></p>

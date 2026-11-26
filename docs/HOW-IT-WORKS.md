@@ -180,6 +180,11 @@ Who obeys `config.json`:
   when the options say so. `--desinstalar` does all of that for every AI and also removes the Claude hooks, the status
   line (only TagTeam's), the TagTeam shortcut and `config.json`.
 
+- with `atualizar_clis` on (default for new installs), a setup step runs each checked CLI's own `update` command
+  (`agy update`, `grok update`, `codex update`, `cursor-agent update`) at most once every 20 hours, with no window and a
+  5-minute limit per CLI; a lock keeps two sessions from updating at once, and a CLI that is open (its executable cannot
+  be replaced) fails quietly and tries again the next day. Claude Code updates itself.
+
 Environment variables still win over the file (`TAGTEAM_WORKSPACE`, `TAGTEAM_HANDOFF_THRESHOLD`), so nothing changes for
 an install that predates it.
 

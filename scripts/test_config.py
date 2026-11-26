@@ -301,5 +301,81 @@ class TestInstalarObedece(ComEstado):
         self.assertEqual([t for _ia, t, _f in instalar.PASSOS if t not in instalar.TITULOS_EN], [])
 
 
+
+class TestAtualizarClis(ComEstado):
+    def setUp(self):
+        super().setUp()
+        self.cfg = config.normalizar({"atualizar_clis": True}, config.PADRAO_NOVO)
+        ps = [mock.patch.object(instalar, "CFG", self.cfg),
+              mock.patch.object(instalar, "comandos_de_atualizacao", lambda: {"grok": ["grok", "update"],
+                                                                                "codex": ["codex", "update"]})]
+        for p in ps:
+            p.start()
+            self.addCleanup(p.stop)
+        self.rodados = []
+
+    def rodar(self, codigos=None):
+        codigos = codigos or {}
+
+        def falso(cmd):
+            self.rodados.append(cmd[0])
+            return codigos.get(cmd[0], 0)
+        return falso
+
+    def test_roda_o_update_de_cada_cli_uma_vez_por_dia(self):
+        mudou = []
+        instalar.passo_atualizar_clis(False, mudou, agora=1000.0, rodar=self.rodar())
+        self.assertEqual(sorted(self.rodados), ["codex", "grok"])
+        self.assertEqual(len(mudou), 2)
+        carimbo = instalar._carimbo_atualizar()
+        os.utime(carimbo, (1000.0, 1000.0))
+        instalar.passo_atualizar_clis(False, [], agora=1000.0 + 3600, rodar=self.rodar())       # no mesmo dia
+        self.assertEqual(len(self.rodados), 2)
+        instalar.passo_atualizar_clis(False, [], agora=1000.0 + instalar.INTERVALO_ATUALIZAR_S, rodar=self.rodar())
+        self.assertEqual(len(self.rodados), 4)
+        self.assertFalse(os.path.exists(carimbo + ".trava"))
+
+    def test_desligado_ou_ensaio_nao_roda_nada(self):
+        self.cfg["atualizar_clis"] = False
+        instalar.passo_atualizar_clis(False, [], agora=1000.0, rodar=self.rodar())
+        self.cfg["atualizar_clis"] = True
+        mudou = []
+        instalar.passo_atualizar_clis(True, mudou, agora=1000.0, rodar=self.rodar())
+        self.assertEqual(self.rodados, [])
+        self.assertEqual(mudou, ["atualizaria: codex, grok"])
+
+    def test_falha_avisa_e_tenta_so_amanha(self):
+        with self.assertRaises(RuntimeError) as erro:
+            instalar.passo_atualizar_clis(False, [], agora=1000.0, rodar=self.rodar({"grok": 1}))
+        self.assertIn("grok: falhou (1)", str(erro.exception))
+        self.assertEqual(sorted(self.rodados), ["codex", "grok"])            # um falhar nao impede o outro
+        self.assertTrue(os.path.exists(instalar._carimbo_atualizar()))
+        self.assertFalse(os.path.exists(instalar._carimbo_atualizar() + ".trava"))
+
+    def test_outra_sessao_atualizando_nao_roda_de_novo(self):
+        open(instalar._carimbo_atualizar() + ".trava", "w").close()
+        instalar.passo_atualizar_clis(False, [], rodar=self.rodar())
+        self.assertEqual(self.rodados, [])
+
+    def test_quem_ja_usava_nao_atualiza_sem_pedir(self):
+        self.assertFalse(config.PADRAO_LEGADO["atualizar_clis"])
+        self.assertTrue(config.PADRAO_NOVO["atualizar_clis"])
+
+
+class TestComandosAtualizar(ComEstado):
+    def test_so_os_clis_marcados_e_instalados(self):
+        cfg = config.normalizar({"conversas": {"grok": False}, "ambiente": {"grok": False}}, config.PADRAO_NOVO)
+        existe = {"agy.exe", "grok.exe", "x it's.cmd"}
+        with mock.patch.object(instalar, "CFG", cfg), mock.patch.object(instalar, "AGY", "C:/l/agy.exe"), \
+                mock.patch.object(instalar, "GROK_EXE", "C:/g/grok.exe"), \
+                mock.patch.object(instalar, "CURSOR_AGENT", "C:/A B/x it's.cmd"), \
+                mock.patch.object(instalar, "_codex_exe", lambda: "C:/c/codex.exe"), \
+                mock.patch("os.path.isfile", lambda c: os.path.basename(c) in existe):
+            cmds = instalar.comandos_de_atualizacao()
+        self.assertEqual(sorted(cmds), ["antigravity", "codex", "cursor"])      # o Grok esta desmarcado
+        self.assertEqual(cmds["antigravity"], ["C:/l/agy.exe", "update"])
+        self.assertEqual(cmds["cursor"][-1], "& 'C:/A B/x it''s.cmd' update")   # aspas simples dobradas
+
+
 if __name__ == "__main__":
     unittest.main()

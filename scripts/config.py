@@ -39,6 +39,7 @@ def _padrao(admin_e_livre):
         "conversas": {ia: True for ia in IAS},     # sincronizar as conversas com esta IA
         "ambiente": {ia: True for ia in IAS},      # CLAUDE.md, skills, plugins e MCP do Claude nesta IA
         "instalar_clis": True,                     # instalar o CLI que falta de uma IA marcada (instalador oficial)
+        "atualizar_clis": not admin_e_livre,       # rodar o "update" oficial de cada CLI marcado, uma vez por dia
         "pasta": "",                               # pasta de trabalho padrao ("" = a home)
         "atalhos": True,                           # atalhos no Menu Iniciar
         "atalhos_admin": admin_e_livre,            # atalhos abrem como administrador
@@ -72,7 +73,8 @@ def normalizar(bruto, base=None):
         dado = d.get(grupo) if isinstance(d.get(grupo), dict) else {}
         for ia in IAS:
             cfg[grupo][ia] = _bool(dado.get(ia), base[grupo][ia])
-    for chave in ("instalar_clis", "atalhos", "atalhos_admin", "atalhos_sem_aprovacao", "statusline", "passagem"):
+    for chave in ("instalar_clis", "atualizar_clis", "atalhos", "atalhos_admin", "atalhos_sem_aprovacao", "statusline",
+                  "passagem"):
         cfg[chave] = _bool(d.get(chave), base[chave])
     pasta = d.get("pasta", "")
     cfg["pasta"] = pasta if _pasta_valida(pasta) else ""

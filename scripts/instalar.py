@@ -910,6 +910,81 @@ def passo_atalhos_cursor(seco, mudou):
         remover_atalhos("cursor", seco, mudou)
 
 
+# ---------------------------------------------------------------- atualizacao dos CLIs
+INTERVALO_ATUALIZAR_S = 20 * 3600       # "uma vez por dia" sem empurrar a hora para frente a cada dia
+TIMEOUT_ATUALIZAR_S = 300               # por CLI: download e troca do executavel
+TRAVA_ATUALIZAR_VELHA_S = 3600          # trava de uma rodada que morreu no meio
+
+
+def comandos_de_atualizacao():
+    """{ia: comando} do "update" oficial de cada CLI marcado e instalado (o Claude Code se atualiza sozinho)."""
+    saida = {}
+    if cfgmod.ligada(CFG, "antigravity") and os.path.isfile(AGY):
+        saida["antigravity"] = [AGY, "update"]
+    if cfgmod.ligada(CFG, "grok") and os.path.isfile(GROK_EXE):
+        saida["grok"] = [GROK_EXE, "update"]
+    codex_exe = _codex_exe() if cfgmod.ligada(CFG, "codex") else None
+    if codex_exe:
+        saida["codex"] = [codex_exe, "update"]
+    if cfgmod.ligada(CFG, "cursor") and os.path.isfile(CURSOR_AGENT):
+        # .cmd com espaco no caminho: pelo PowerShell, com o caminho entre aspas simples (sem montar texto de fora)
+        saida["cursor"] = ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+                           "& '" + CURSOR_AGENT.replace("'", "''") + "' update"]
+    return saida
+
+
+def _carimbo_atualizar():
+    return os.path.join(cfgmod.pasta_estado(), "ultima-atualizacao-clis.txt")
+
+
+def hora_de_atualizar(agora):
+    """A ultima rodada de atualizacao foi ha mais de INTERVALO_ATUALIZAR_S (ou nunca houve)."""
+    try:
+        return agora - os.path.getmtime(_carimbo_atualizar()) >= INTERVALO_ATUALIZAR_S
+    except OSError:
+        return True
+
+
+def passo_atualizar_clis(seco, mudou, agora=None, rodar=None):
+    """Roda o "update" oficial de cada CLI marcado, no maximo uma vez por dia, com prazo e sem janela. Uma trava evita
+    duas sessoes atualizando juntas; CLI em uso que nao deixa trocar o executavel tenta de novo no dia seguinte."""
+    import subprocess
+    import time
+    agora = time.time() if agora is None else agora
+    if not CFG.get("atualizar_clis") or not hora_de_atualizar(agora):
+        return
+    comandos = comandos_de_atualizacao()
+    if not comandos:
+        return
+    if seco:
+        mudou.append("atualizaria: " + ", ".join(sorted(comandos)))
+        return
+    os.makedirs(cfgmod.pasta_estado(), exist_ok=True)
+    trava = _carimbo_atualizar() + ".trava"
+    try:
+        if os.path.exists(trava) and agora - os.path.getmtime(trava) > TRAVA_ATUALIZAR_VELHA_S:
+            os.remove(trava)
+        os.close(os.open(trava, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+    except FileExistsError:
+        return                                      # outra sessao esta atualizando agora
+    rodar = rodar or (lambda cmd: subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, timeout=TIMEOUT_ATUALIZAR_S,
+                                                 check=False, creationflags=SEM_JANELA_PS).returncode)
+    falhas = []
+    try:
+        for ia, cmd in sorted(comandos.items()):
+            try:
+                codigo = rodar(cmd)
+            except (OSError, subprocess.SubprocessError) as e:
+                codigo = type(e).__name__
+            (mudou if codigo == 0 else falhas).append(f"{ia}: " + ("atualizado ou em dia" if codigo == 0 else f"falhou ({codigo})"))
+        with open(_carimbo_atualizar(), "w", encoding="utf-8") as f:
+            f.write(time.strftime("%Y-%m-%d %H:%M:%S"))
+    finally:
+        os.remove(trava)
+    if falhas:
+        raise RuntimeError("; ".join(falhas) + " (tenta de novo amanha; um CLI aberto nao deixa trocar o executavel)")
+
+
 # (ia, titulo, funcao), na ordem em que rodam. ia "tagteam" = do proprio TagTeam.
 PASSOS = (
     ("claude", "Hooks e status line do Claude Code", passo_claude),
@@ -927,6 +1002,7 @@ PASSOS = (
     ("cursor", "Atalhos do Cursor", passo_atalhos_cursor),
     ("cursor", "Ambiente e hook do Cursor", instalar_cursor_config),
     ("tagteam", "Atalho do monitor TagTeam", criar_atalho_tagteam),
+    ("tagteam", "Atualizar os CLIs (uma vez por dia)", passo_atualizar_clis),
 )
 TITULOS_EN = {
     "Hooks e status line do Claude Code": "Claude Code hooks and status line",
@@ -944,6 +1020,7 @@ TITULOS_EN = {
     "Atalhos do Cursor": "Cursor shortcuts",
     "Ambiente e hook do Cursor": "Cursor environment and hook",
     "Atalho do monitor TagTeam": "TagTeam monitor shortcut",
+    "Atualizar os CLIs (uma vez por dia)": "Update the CLIs (once a day)",
 }
 ERROS_DE_PASSO = (OSError, RuntimeError, ValueError, TimeoutError)
 
@@ -982,7 +1059,7 @@ def desligar_tudo(cfg):
     novo = json.loads(json.dumps(cfg))
     for ia in cfgmod.IAS:
         novo["conversas"][ia] = novo["ambiente"][ia] = False
-    novo["atalhos"] = novo["statusline"] = novo["instalar_clis"] = False
+    novo["atalhos"] = novo["statusline"] = novo["instalar_clis"] = novo["atualizar_clis"] = False
     return novo
 
 

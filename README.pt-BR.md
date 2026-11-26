@@ -57,7 +57,8 @@ Ele baixa a versão mais nova (conferida pelo SHA-256 que o GitHub publica) e ab
 1. **Escolha as IAs.** Mostra o que está instalado no seu PC; marque as que vão dividir as conversas com o Claude Code.
 2. **Escolha as opções.** Pasta padrão, o mesmo ambiente do Claude (CLAUDE.md, skills, plugins, MCP) em cada IA, atalhos
    no Menu Iniciar (como administrador e sem pedir aprovação só se você quiser), o status line do uso, a passagem
-   automática e o seu %, e pastas cujas conversas nunca saem do Claude.
+   automática e o seu %, pastas cujas conversas nunca saem do Claude e **manter os CLIs do `agy`, do Grok, do Codex e
+   do Cursor atualizados sozinhos** (o `update` oficial de cada um, uma vez por dia, em segundo plano).
 3. **Acompanhe a instalação.** Cada passo com ✓ ou o motivo da falha; no fim, abra cada CLI uma vez para o login.
 
 <p align="center"><img src="assets/screens/assistente-pt.png" alt="Instalação do TagTeam: escolha quais IAs sincronizar com o Claude Code" width="88%"></p>
