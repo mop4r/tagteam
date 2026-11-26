@@ -344,13 +344,17 @@ class TestAtualizarClis(ComEstado):
         self.assertEqual(self.rodados, [])
         self.assertEqual(mudou, ["atualizaria: codex, grok"])
 
-    def test_falha_avisa_e_tenta_so_amanha(self):
-        with self.assertRaises(RuntimeError) as erro:
-            instalar.passo_atualizar_clis(False, [], agora=1000.0, rodar=self.rodar({"grok": 1}))
-        self.assertIn("grok: falhou (1)", str(erro.exception))
+    def test_falha_nao_derruba_a_instalacao_e_o_monitor_mostra(self):
+        import saude
+        mudou = []
+        instalar.passo_atualizar_clis(False, mudou, agora=1000.0, rodar=self.rodar({"grok": 1}))   # nao levanta
+        self.assertIn("grok: nao atualizou (1); tenta de novo amanha", mudou)
         self.assertEqual(sorted(self.rodados), ["codex", "grok"])            # um falhar nao impede o outro
-        self.assertTrue(os.path.exists(instalar._carimbo_atualizar()))
         self.assertFalse(os.path.exists(instalar._carimbo_atualizar() + ".trava"))
+        self.assertEqual(saude.falhas_de_atualizacao(), ["grok"])
+        os.utime(instalar._carimbo_atualizar(), (1000.0, 1000.0))             # o carimbo no relogio do teste
+        instalar.passo_atualizar_clis(False, [], agora=1000.0 + instalar.INTERVALO_ATUALIZAR_S, rodar=self.rodar())
+        self.assertEqual(saude.falhas_de_atualizacao(), [])                    # deu certo depois: o aviso some
 
     def test_outra_sessao_atualizando_nao_roda_de_novo(self):
         open(instalar._carimbo_atualizar() + ".trava", "w").close()

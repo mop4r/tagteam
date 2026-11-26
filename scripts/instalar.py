@@ -947,7 +947,8 @@ def hora_de_atualizar(agora):
 
 def passo_atualizar_clis(seco, mudou, agora=None, rodar=None):
     """Roda o "update" oficial de cada CLI marcado, no maximo uma vez por dia, com prazo e sem janela. Uma trava evita
-    duas sessoes atualizando juntas; CLI em uso que nao deixa trocar o executavel tenta de novo no dia seguinte."""
+    duas sessoes atualizando juntas; CLI em uso que nao deixa trocar o executavel tenta de novo no dia seguinte. Falha
+    de atualizacao nao e falha da instalacao: vai para o carimbo (o monitor mostra) e para o que mudou."""
     import subprocess
     import time
     agora = time.time() if agora is None else agora
@@ -976,13 +977,15 @@ def passo_atualizar_clis(seco, mudou, agora=None, rodar=None):
                 codigo = rodar(cmd)
             except (OSError, subprocess.SubprocessError) as e:
                 codigo = type(e).__name__
-            (mudou if codigo == 0 else falhas).append(f"{ia}: " + ("atualizado ou em dia" if codigo == 0 else f"falhou ({codigo})"))
+            if codigo == 0:
+                mudou.append(f"{ia}: atualizado ou em dia")
+            else:
+                falhas.append(ia)
+                mudou.append(f"{ia}: nao atualizou ({codigo}); tenta de novo amanha")
         with open(_carimbo_atualizar(), "w", encoding="utf-8") as f:
-            f.write(time.strftime("%Y-%m-%d %H:%M:%S"))
+            json.dump({"quando": time.strftime("%Y-%m-%d %H:%M:%S"), "falhas": falhas}, f)
     finally:
         os.remove(trava)
-    if falhas:
-        raise RuntimeError("; ".join(falhas) + " (tenta de novo amanha; um CLI aberto nao deixa trocar o executavel)")
 
 
 # (ia, titulo, funcao), na ordem em que rodam. ia "tagteam" = do proprio TagTeam.

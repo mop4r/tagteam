@@ -118,6 +118,13 @@ def arquivo_estado():
     return os.path.join(config.pasta_estado(), f"estado-{pc}.json")
 
 
+def falhas_de_atualizacao():
+    """IAs cujo CLI nao atualizou na ultima rodada de atualizacao automatica (instalar.passo_atualizar_clis)."""
+    dado = _json(os.path.join(config.pasta_estado(), "ultima-atualizacao-clis.txt"))
+    falhas = dado.get("falhas") if isinstance(dado, dict) else None
+    return [ia for ia in falhas if ia in config.IAS] if isinstance(falhas, list) else []
+
+
 def ia_do_evento(ev):
     """De onde veio a rodada (pelos argumentos): a IA do hook, "claude" para uma sessao do Claude, "completa" sem filtro."""
     args = ev.get("args") or []
@@ -161,6 +168,8 @@ MENSAGENS = {
     "hook_nunca": ("hook ainda não foi chamado neste PC (abra uma conversa nela)",
                    "hook not called on this PC yet (open a chat there)"),
     "hook_parado": ("hook não é chamado há {d} dias", "hook not called for {d} days"),
+    "cli_nao_atualizou": ("o CLI não atualizou na última tentativa (aberto? tenta de novo amanhã)",
+                          "the CLI did not update on the last try (open? it retries tomorrow)"),
 }
 ASSUNTOS = {"geral": ("Geral", "General"), "python": ("Python", "Python"), "configuracao": ("Configuração", "Settings"),
             "sincronizacao": ("Sincronização", "Sync"), "claude": ("Claude Code", "Claude Code")}
@@ -214,6 +223,8 @@ def _checagens_gerais(cfg, detectado, agora, eventos):
                  if agora - os.path.getmtime(p) < 2 * gancho.INTERVALO_S]
     if pendentes:
         saida.append(("sincronizacao", INFO, "agendadas", {"n": len(pendentes)}))
+    for ia in falhas_de_atualizacao():
+        saida.append((ia, INFO, "cli_nao_atualizou", {}))
     res = resumo_eventos(eventos, agora)
     if res["ultimo_erro"]:
         erros = res["ultimo_erro"].get("erros") or []
