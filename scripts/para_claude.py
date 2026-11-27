@@ -23,8 +23,24 @@ ORIGENS = {"antigravity": (ENTRYPOINT, PREFIXO_TITULO, "gemini-antigravity"),
            "grok": ("grok-import", "[Grok] ", "grok-cli"),
            "codex": ("codex-import", "[Codex] ", "codex-cli"),
            "cursor": ("cursor-import", "[Cursor] ", "cursor")}
+NOMES_ORIGEM = {"antigravity": "Antigravity", "grok": "Grok", "codex": "Codex", "cursor": "Cursor"}
+SUFIXO_RAMO = " ({nome} branch)"
 VERSAO_PADRAO = "2.1.0"
 NAMESPACE = uuid.UUID("3f1c9a7e-5b2d-4e8f-a6c0-2d9e7b4f1a85")
+
+
+def titulo_ramo(titulo, origem):
+    """Marca explicita de fork quando a mesma conversa divergiu em duas IAs ao mesmo tempo.
+
+    Reserva espaco para o prefixo '[IA] ' que linhas_sessao acrescenta, para o leitor (limite 80) nao cortar o sufixo."""
+    sufixo = SUFIXO_RAMO.format(nome=NOMES_ORIGEM.get(origem, origem))
+    prefixo = ORIGENS.get(origem, ("", "", ""))[1]
+    base = (titulo or "").strip()
+    teto = 80 if (prefixo and base.startswith(prefixo)) else 80 - len(prefixo)
+    if base.endswith(sufixo) and len(base) <= teto:
+        return base
+    corpo = base[:-len(sufixo)] if base.endswith(sufixo) else base
+    return corpo[:max(0, teto - len(sufixo))].rstrip() + sufixo
 
 
 def projetos_claude():
@@ -70,14 +86,14 @@ def _chamadas(resposta):
     return linhas
 
 
-def ler_conversa_antigravity(cascade, base=None):
-    """Passos feitos da conversa -> turnos (usuario / assistente), na ordem."""
+def ler_conversa_antigravity(cascade, base=None, desde_idx=-1):
+    """Passos feitos da conversa -> turnos (usuario / assistente), na ordem (desde_idx filtra so os passos novos)."""
     base = base or antigravity.base_padrao()
     caminho = os.path.join(base, "conversations", cascade + ".db")
     c = sqlite3.connect(f"file:{caminho}?mode=ro", uri=True, timeout=10)
     try:
-        passos = c.execute("select step_type, metadata, step_payload from steps where status=? order by idx",
-                           (antigravity.STATUS_FEITO,)).fetchall()
+        passos = c.execute("select step_type, metadata, step_payload from steps where status=? and idx>? order by idx",
+                           (antigravity.STATUS_FEITO, desde_idx)).fetchall()
     finally:
         c.close()
     turnos, ultimo = [], None
@@ -166,14 +182,15 @@ def _iso(dt):
     return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.") + f"{dt.microsecond // 1000:03d}Z"
 
 
-def linhas_sessao(conv, sessao, cwd, versao, origem="antigravity"):
-    """Linhas do .jsonl no formato do Claude Code: mensagens encadeadas por parentUuid + titulo."""
-    entrypoint, prefixo, modelo = ORIGENS[origem]
+def _montar_mensagens(turnos, sessao, cwd, versao, origem, pai=None, base_idx=0):
+    """Monta as linhas user/assistant encadeadas por parentUuid a partir de <pai>."""
+    entrypoint, _prefixo, modelo = ORIGENS[origem]
     comum = {"isSidechain": False, "userType": "external", "entrypoint": entrypoint, "cwd": cwd,
              "sessionId": sessao, "version": versao}
-    out, pai = [], None
-    for i, t in enumerate(conv.turnos):
-        meu = str(uuid.uuid5(NAMESPACE, f"{sessao}:{i}"))
+    out = []
+    for i, t in enumerate(turnos):
+        chave = f"{sessao}:{base_idx + i}" if base_idx == 0 else f"{sessao}:ff:{base_idx + i}:{origem}"
+        meu = str(uuid.uuid5(NAMESPACE, chave))
         if t.papel == "usuario":
             msg = {"role": "user", "content": t.texto}
             linha = {"parentUuid": pai, **comum, "type": "user", "message": msg, "uuid": meu, "timestamp": _iso(t.quando)}
@@ -185,11 +202,91 @@ def linhas_sessao(conv, sessao, cwd, versao, origem="antigravity"):
                      "timestamp": _iso(t.quando)}
         out.append(linha)
         pai = meu
+    return out, pai
+
+
+def linhas_sessao(conv, sessao, cwd, versao, origem="antigravity"):
+    """Linhas do .jsonl no formato do Claude Code: mensagens encadeadas por parentUuid + titulo."""
+    _entrypoint, prefixo, _modelo = ORIGENS[origem]
+    out, pai = _montar_mensagens(conv.turnos, sessao, cwd, versao, origem)
     titulo = conv.titulo if conv.titulo.startswith(prefixo) else prefixo + conv.titulo
     out.append({"type": "ai-title", "aiTitle": titulo, "sessionId": sessao})
     ultimo_usuario = next((t.texto for t in reversed(conv.turnos) if t.papel == "usuario"), "")
     out.append({"type": "last-prompt", "lastPrompt": ultimo_usuario[:200], "leafUuid": pai, "sessionId": sessao})
     return out
+
+
+def _analisar_linhas_cauda(linhas):
+    """Extrai (ultimo_uuid, cwd, n_msgs) das linhas validas do .jsonl."""
+    pai = folha = cwd = None
+    n_msgs = 0
+    for ln in linhas:
+        try:
+            o = json.loads(ln)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            continue
+        if not isinstance(o, dict):
+            continue
+        cwd = cwd or (o.get("cwd") if isinstance(o.get("cwd"), str) else "")
+        tipo = o.get("type")
+        if tipo in ("user", "assistant") and not o.get("isSidechain") and not o.get("isMeta"):
+            n_msgs += 1
+            pai = o["uuid"] if isinstance(o.get("uuid"), str) and o["uuid"] else pai
+        elif tipo == "last-prompt" and isinstance(o.get("leafUuid"), str) and o["leafUuid"]:
+            folha = o["leafUuid"]
+    return (pai or folha), (cwd or ""), n_msgs
+
+
+def _ler_cauda(caminho):
+    """Le bytes originais do .jsonl e extrai (bytes, ultimo_uuid, cwd, n_msgs); None se ultima linha estiver quebrada."""
+    with open(caminho, "rb") as f:
+        bruto = f.read()
+    linhas = [ln for ln in bruto.splitlines() if ln.strip()]
+    if not linhas:
+        return None
+    try:
+        json.loads(linhas[-1])
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    pai, cwd, n_msgs = _analisar_linhas_cauda(linhas)
+    return bruto, pai, cwd, n_msgs
+
+
+def acrescentar_turnos(caminho, sessao, novos_turnos, versao, origem="antigravity", marca_esperada=None):
+    """Acrescenta turnos novos ao fim de um .jsonl existente (fast-forward), preservando intacto tudo o que ja havia.
+    Confere a marca do arquivo antes da troca (evita corrida se o Claude gravou no meio). Devolve (tamanho, mtime) ou None."""
+    if not novos_turnos:
+        return None
+    st_antes = os.stat(caminho)
+    marca_antes = (st_antes.st_size, round(st_antes.st_mtime, 3))
+    if marca_esperada is not None and marca_antes != marca_esperada:
+        return None
+    cauda = _ler_cauda(caminho)
+    if cauda is None:
+        return None
+    bruto, pai, cwd, n_msgs = cauda
+    novas, folha = _montar_mensagens(novos_turnos, sessao, cwd, versao, origem, pai=pai, base_idx=n_msgs + 1)
+    ultimo_u = next((t.texto for t in reversed(novos_turnos) if t.papel == "usuario"), None)
+    if ultimo_u is not None:
+        novas.append({"type": "last-prompt", "lastPrompt": ultimo_u[:200], "leafUuid": folha, "sessionId": sessao})
+    prefixo = bruto if bruto.endswith(b"\n") else bruto + b"\n"
+    extra = "".join(json.dumps(linha, ensure_ascii=False) + "\n" for linha in novas).encode("utf-8")
+    tmp = caminho + ".novo"
+    with open(tmp, "wb") as f:
+        f.write(prefixo)
+        f.write(extra)
+    st_agora = os.stat(caminho)
+    if (st_agora.st_size, round(st_agora.st_mtime, 3)) != marca_antes:
+        os.remove(tmp)
+        return None
+    os.replace(tmp, caminho)
+    datas = [t.quando.timestamp() for t in novos_turnos if getattr(t, "quando", None)]
+    if datas:
+        ts = max(max(datas), st_antes.st_mtime)
+        if 946684800 <= ts <= 4102444800:
+            os.utime(caminho, (ts, ts))
+    st_fim = os.stat(caminho)
+    return (st_fim.st_size, round(st_fim.st_mtime, 3))
 
 
 def gravar_sessao(conv, sessao, pasta, cwd, versao, origem="antigravity"):

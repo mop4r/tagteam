@@ -36,8 +36,10 @@ Codex (app and CLI, sharing `~/.codex`) when one of them hits its usage limit. T
 - A pure mirror never goes back (markers: `entrypoint` `antigravity-import`/`grok-import`/`codex-import`,
   `claude_import` table, `claude_import.json`; in Codex, imported turns have `external-import-turn-N`/`rollout-N` ids
   and turns made in Codex have UUID ids).
-- A copy continued at the destination is never overwritten: a new version (new id) is created and the continued copy
-  stays.
+- Single-lineage fast-forward: continuing a copy in another AI when the Claude session has not moved appends only the
+  new turns onto the same Claude session (replacing superseded copies cleanly across all AIs, zero duplicates).
+- Conflict-safe fork: if both sides actually received new turns before syncing (true concurrent divergence), neither is
+  overwritten — a separate session is forked with an explicit `(<AI> branch)` title suffix.
 - A copy deleted at the destination does not come back (only with `--forcar`). Automated Claude sessions (`claude -p`,
   SDK) are skipped.
 - An AI unchecked in `config.json` is skipped by the sync and its hook does nothing; sessions from an excluded folder

@@ -47,6 +47,7 @@ import config  # noqa: E402
 import cursor  # noqa: E402
 import cursor_app  # noqa: E402
 import grok  # noqa: E402
+import linhagem  # noqa: E402
 import para_claude  # noqa: E402
 import servidor_local  # noqa: E402
 
@@ -305,14 +306,24 @@ def para_antigravity(a, estado, cont):
         _para_um_alvo(a, estado["importadas"].setdefault(alvo, {}), estado, cont, base, alvo, molde, servidor)
 
 
+def _antigravity_divergiu(anterior, sit, base):
+    """True se a copia no Antigravity recebeu passos alem do que ja foi sincronizado."""
+    passos_import, passos_agora = sit[0], sit[1]
+    if anterior and anterior.get("assin_sync"):
+        esperados = max(passos_import or 0, anterior.get("passos_sync", 0))
+        return passos_agora > esperados or antigravity.assinatura(anterior["cascade"], base) != anterior["assin_sync"]
+    if passos_import is not None:
+        return passos_agora > passos_import
+    return True
+
+
 def _para_um_alvo(a, imp, estado, cont, base, alvo, molde, servidor):
     for caminho in _sessoes_do_claude():
         sessao = os.path.basename(caminho)[:-6]
         if not ID_RE.match(sessao) or _fora_do_filtro(a, sessao):
             continue
         try:
-            st = os.stat(caminho)
-            marca = (st.st_size, round(st.st_mtime, 3))
+            marca = linhagem.marca_arquivo(caminho)
             anterior = imp.get(sessao)
             if anterior is None and antigravity.situacao(antigravity.id_para_sessao(sessao, 0, alvo), base):
                 anterior = {"cascade": antigravity.id_para_sessao(sessao, 0, alvo), "versao": 0}   # estado perdido
@@ -321,15 +332,17 @@ def _para_um_alvo(a, imp, estado, cont, base, alvo, molde, servidor):
                 cont["c>a apagadas_no_antigravity"] += 1
                 continue
             manter = False
+            nativa = bool(anterior and anterior.get("origem_nativa"))
             if sit is not None:
-                passos_import, passos_agora, tam, mt = sit
-                if passos_import is None:
+                passos_import, _passos_agora, tam, mt = sit
+                if passos_import is None and not nativa:
                     cont["erro"] += 1              # id ocupado por conversa que nao e nossa
                     continue
-                if (tam, mt) == marca and not a.forcar:
-                    cont["c>a iguais"] += 1
+                marca_ant = (anterior.get("fonte_tamanho"), anterior.get("fonte_mtime")) if anterior else (None, None)
+                if ((tam, mt) == marca or marca_ant == marca) and not a.forcar:
+                    cont["c>a espelhos" if nativa else "c>a iguais"] += 1
                     continue
-                manter = passos_agora > passos_import  # voce continuou la: fica, e entra versao nova
+                manter = _antigravity_divergiu(anterior, sit, base)
             conv = claude_jsonl.ler_conversa(caminho, sessao)
             if conv.entrypoint.startswith("sdk"):
                 cont["c>a automaticas"] += 1
@@ -344,7 +357,16 @@ def _para_um_alvo(a, imp, estado, cont, base, alvo, molde, servidor):
             if a.seco:
                 print(f"{rotulo} ({alvo}): {conv.titulo} ({len(conv.turnos)} passos)")
             else:
-                imp[sessao] = importar(conv, molde, marca, servidor, anterior, base, manter)
+                if nativa and not manter and servidor is None:
+                    linhagem.arquivar_substituida(PASTA_ESTADO, alvo, anterior["cascade"],
+                                                  os.path.join(base, "conversations", anterior["cascade"] + ".db"))
+                novo = importar(conv, molde, marca, servidor, anterior, base, manter)
+                if nativa and not manter:
+                    estado["exportadas"].pop(anterior["cascade"], None)
+                imp[sessao] = {"cascade": novo["cascade"], "versao": novo["versao"],
+                               "fonte_tamanho": marca[0], "fonte_mtime": marca[1],
+                               "turnos_claude": len(conv.turnos), "passos_sync": len(conv.turnos),
+                               "ultimo_idx_sync": len(conv.turnos) - 1}
                 gravar_estado(estado)
             cont[rotulo] += 1
         except (OSError, ValueError, RuntimeError, sqlite3.Error) as e:
@@ -361,22 +383,77 @@ def _conversas_antigravity():
                 yield base, cascade
 
 
-def exportar(conv, cascade, total, rec, versao_cc, forcar):
-    """Grava a sessao do Claude. Continuada no Claude -> versao nova (a continuada fica)."""
-    versao = 0
+def exportar(conv, cascade, total, rec, versao_cc, forcar, ramo=False):
+    """Grava a sessao do Claude. Continuada no Claude -> versao nova (a continuada fica) com marca de ramo."""
+    versao, divergiu = 0, ramo
     if rec:
         caminho = para_claude.achar_sessao(rec["sessao"])
         continuada = caminho is not None and \
             len(claude_jsonl.ler_conversa(caminho, rec["sessao"]).turnos) > rec["turnos"]
         versao = rec["versao"] + 1 if continuada else rec["versao"]
+        divergiu = divergiu or continuada
+    if divergiu:
+        conv.titulo = para_claude.titulo_ramo(conv.titulo, "antigravity")
     sessao = para_claude.id_sessao(cascade, versao)
     cwd = conv.cwd or WORKSPACE
     para_claude.gravar_sessao(conv, sessao, para_claude.pasta_do_projeto(cwd), cwd, versao_cc)
     return {"sessao": sessao, "versao": versao, "passos": total, "turnos": len(conv.turnos)}
 
 
+def _aplicar_fast_forward(ctx, alvo_imp, sessao_origem, novos, origem, base_sync, rotulo_prefix):
+    """Helper comum de fast-forward (Agy, Grok, Cursor CLI e App). Devolve (tratado, divergiu)."""
+    a, estado, cont, novas = ctx["a"], ctx["estado"], ctx["cont"], ctx["novas"]
+    rec_imp = alvo_imp.get(sessao_origem)
+    if a.seco:
+        if novos:
+            print(f"{rotulo_prefix} atualizadas (fast-forward): {sessao_origem} (+{len(novos)} turnos)")
+            cont[f"{rotulo_prefix} atualizadas"] += 1
+        else:
+            cont[f"{rotulo_prefix} iguais"] += 1
+        return True, False
+    turnos_base = rec_imp.get("turnos_claude") if rec_imp else None
+    marca_base = ((rec_imp["fonte_tamanho"], rec_imp["fonte_mtime"])
+                  if rec_imp and rec_imp.get("fonte_tamanho") is not None else base_sync.get("marca_fallback"))
+    ctx["versao_cc"] = ctx.get("versao_cc") or para_claude.versao_claude()
+    status, info = linhagem.tentar_avancar_claude(sessao_origem, turnos_base, marca_base, novos, origem, ctx["versao_cc"])
+    if status == "avancou":
+        novo_tam, novo_mt, total_t = info
+        base_rec = dict(rec_imp) if rec_imp else dict(base_sync["padrao"])
+        base_rec.update(base_sync["campos"], fonte_tamanho=novo_tam, fonte_mtime=novo_mt, turnos_claude=total_t)
+        alvo_imp[sessao_origem] = base_rec
+        gravar_estado(estado)
+        novas.add(sessao_origem)
+        cont[f"{rotulo_prefix} atualizadas"] += 1
+        return True, False
+    if status == "sem_novos":
+        if rec_imp:
+            rec_imp.update(base_sync["campos"])
+            gravar_estado(estado)
+        cont[f"{rotulo_prefix} iguais"] += 1
+        return True, False
+    return False, True
+
+
+def _avancar_de_antigravity(ctx, base, cascade, sit, assin, imp_alvo):
+    """Fast-forward quando copia do Claude foi continuada no Antigravity. Devolve (tratado, divergiu)."""
+    sessao_imp, rec_imp = linhagem.achar_importada(imp_alvo, "cascade", cascade)
+    orig = antigravity.origem_importada(cascade, base)
+    sessao_origem = sessao_imp or (orig[0] if orig and ID_RE.match(str(orig[0])) else None)
+    if not sessao_origem:
+        return False, False
+    passos_import, total, tam_imp, mt_imp = sit
+    desde_idx = rec_imp["ultimo_idx_sync"] if (rec_imp and "ultimo_idx_sync" in rec_imp) else (
+        (passos_import - 1) if passos_import is not None else -1)
+    novos = para_claude.ler_conversa_antigravity(cascade, base, desde_idx=desde_idx).turnos
+    base_sync = {"padrao": {"cascade": cascade, "versao": 0},
+                 "marca_fallback": (tam_imp, mt_imp) if tam_imp is not None else None,
+                 "campos": {"passos_sync": total, "ultimo_idx_sync": antigravity.ultimo_idx_feito(cascade, base),
+                            "assin_sync": assin}}
+    return _aplicar_fast_forward(ctx, imp_alvo, sessao_origem, novos, "antigravity", base_sync, "a>c")
+
+
 def para_claude_(a, estado, cont, novas):
-    versao_cc = None
+    ctx = {"a": a, "estado": estado, "cont": cont, "novas": novas, "versao_cc": None}
     for base, cascade in _conversas_antigravity():
         if (a.cascade and cascade != a.cascade) or a.sessao or a.grok or a.codex or a.cursor:
             continue
@@ -388,28 +465,47 @@ def para_claude_(a, estado, cont, novas):
             if passos_import is not None and total <= passos_import:
                 cont["a>c espelhos"] += 1                 # veio do Claude e ninguem continuou aqui
                 continue
+            alvo = os.path.basename(base)
+            imp_alvo = estado["importadas"].setdefault(alvo, {})
             rec = estado["exportadas"].get(cascade)
+            _, rec_imp = linhagem.achar_importada(imp_alvo, "cascade", cascade)
             # pela assinatura dos passos, nao pela contagem: o ultimo passo termina de ser escrito sem passo novo
             assin = antigravity.assinatura(cascade, base)
             if rec and rec.get("assinatura", rec["passos"]) == assin and not a.forcar:
                 cont["a>c iguais"] += 1
                 continue
+            if not rec and rec_imp and rec_imp.get("assin_sync") == assin and not a.forcar:
+                cont["a>c iguais"] += 1
+                continue
             if rec and para_claude.achar_sessao(rec["sessao"]) is None and not a.forcar:
                 cont["a>c apagadas_no_claude"] += 1
                 continue
+            divergiu = False
+            if not rec:
+                tratado, divergiu = _avancar_de_antigravity(ctx, base, cascade, sit, assin, imp_alvo)
+                if tratado:
+                    continue
             conv = para_claude.ler_conversa_antigravity(cascade, base)
             if not any(t.papel == "usuario" for t in conv.turnos):
                 cont["a>c vazias"] += 1
                 continue
             rotulo = "a>c atualizadas" if rec else "a>c criadas"
             if a.seco:
-                print(f"{rotulo}: {conv.titulo} ({len(conv.turnos)} turnos, {os.path.basename(base)})")
+                print(f"{rotulo}: {conv.titulo} ({len(conv.turnos)} turnos, {alvo})")
             else:
-                versao_cc = versao_cc or para_claude.versao_claude()
-                estado["exportadas"][cascade] = dict(exportar(conv, cascade, total, rec, versao_cc, a.forcar),
-                                                     assinatura=assin)
+                ctx["versao_cc"] = ctx["versao_cc"] or para_claude.versao_claude()
+                res = exportar(conv, cascade, total, rec, ctx["versao_cc"], a.forcar, ramo=divergiu)
+                estado["exportadas"][cascade] = dict(res, assinatura=assin)
+                caminho_s = para_claude.achar_sessao(res["sessao"])
+                if caminho_s:
+                    st_s = linhagem.marca_arquivo(caminho_s)
+                    imp_alvo[res["sessao"]] = {
+                        "cascade": cascade, "versao": 0, "fonte_tamanho": st_s[0], "fonte_mtime": st_s[1],
+                        "turnos_claude": res["turnos"], "passos_sync": total,
+                        "ultimo_idx_sync": antigravity.ultimo_idx_feito(cascade, base),
+                        "assin_sync": assin, "origem_nativa": True}
                 gravar_estado(estado)
-                novas.add(estado["exportadas"][cascade]["sessao"])
+                novas.add(res["sessao"])
             cont[rotulo] += 1
         except (OSError, ValueError, RuntimeError, sqlite3.Error) as e:
             cont["erro"] += 1
@@ -426,20 +522,25 @@ def para_grok(a, estado, cont):
         if not ID_RE.match(sessao) or _fora_do_filtro(a, sessao):
             continue
         try:
-            st = os.stat(caminho)
-            fonte = {"sessao": sessao, "fonte_tamanho": st.st_size, "fonte_mtime": round(st.st_mtime, 3)}
+            marca_f = linhagem.marca_arquivo(caminho)
+            fonte = {"sessao": sessao, "fonte_tamanho": marca_f[0], "fonte_mtime": marca_f[1]}
             anterior = imp.get(sessao)
+            nativa = bool(anterior and anterior.get("origem_nativa"))
+            upd_ant = os.path.join(anterior["pasta"], "updates.jsonl") if anterior else ""
+            existe_upd = bool(upd_ant and os.path.isfile(upd_ant))
             m = grok.marca(anterior["pasta"]) if anterior else None
-            if anterior and m is None and not a.forcar:
+            if anterior and not (m is not None or (nativa and existe_upd)) and not a.forcar:
                 cont["c>g apagadas_no_grok"] += 1
                 continue
+            marca_ant = (anterior.get("fonte_tamanho"), anterior.get("fonte_mtime")) if anterior else (None, None)
+            marca_m = (m.get("fonte_tamanho"), m.get("fonte_mtime")) if m else (None, None)
+            if (marca_m == marca_f or marca_ant == marca_f) and not a.forcar:
+                cont["c>g espelhos" if nativa else "c>g iguais"] += 1
+                continue
             manter = False
-            if m is not None:
-                if (m.get("fonte_tamanho"), m.get("fonte_mtime")) == (fonte["fonte_tamanho"], fonte["fonte_mtime"]) \
-                        and not a.forcar:
-                    cont["c>g iguais"] += 1
-                    continue
-                manter = os.path.getsize(os.path.join(anterior["pasta"], "updates.jsonl")) != m.get("bytes_updates")
+            if anterior and existe_upd:
+                bytes_esp = max((m.get("bytes_updates") if m else 0) or 0, anterior.get("bytes_sync", 0))
+                manter = os.path.getsize(upd_ant) != bytes_esp
             conv = claude_jsonl.ler_conversa(caminho, sessao)
             if conv.entrypoint.startswith("sdk"):
                 cont["c>g automaticas"] += 1
@@ -458,8 +559,16 @@ def para_grok(a, estado, cont):
                 sid = grok.id_para_sessao(sessao, versao)
                 pasta = grok.gravar_sessao(conv, sid, cwd_local(conv.cwd), fonte)
                 if anterior and not manter and anterior["pasta"] != pasta:
-                    grok.apagar(anterior["pasta"])           # voce continuou la? (manter) entao a antiga fica
-                imp[sessao] = {"id": sid, "versao": versao, "pasta": pasta}
+                    if nativa:
+                        linhagem.arquivar_substituida(PASTA_ESTADO, "grok", anterior["id"], anterior["pasta"])
+                        grok.apagar(anterior["pasta"], permitir_nativa=True)
+                        estado["exportadas_grok"].pop(anterior["id"], None)
+                    else:
+                        grok.apagar(anterior["pasta"])           # voce continuou la? (manter) entao a antiga fica
+                imp[sessao] = {"id": sid, "versao": versao, "pasta": pasta,
+                               "fonte_tamanho": marca_f[0], "fonte_mtime": marca_f[1],
+                               "turnos_claude": len(conv.turnos),
+                               "bytes_sync": os.path.getsize(os.path.join(pasta, "updates.jsonl"))}
                 gravar_estado(estado)
             cont[rotulo] += 1
         except (OSError, ValueError, RuntimeError) as e:
@@ -468,24 +577,53 @@ def para_grok(a, estado, cont):
 
 
 # ---------------------------------------------------------------- Grok -> Claude
+def _avancar_de_grok(ctx, pasta, sid, m, assin):
+    """Fast-forward quando copia do Claude foi continuada no Grok. Devolve (tratado, divergiu)."""
+    imp_g = ctx["estado"]["importadas_grok"]
+    sessao_imp, rec_imp = linhagem.achar_importada(imp_g, "id", sid)
+    sessao_origem = sessao_imp or (linhagem.sessao_da_marca(m.get("sessao")) if m else None)
+    if not sessao_origem:
+        return False, False
+    desde_byte = rec_imp["bytes_sync"] if (rec_imp and "bytes_sync" in rec_imp) else (m.get("bytes_updates", 0) if m else 0)
+    tam_upd = os.path.getsize(os.path.join(pasta, "updates.jsonl"))
+    if tam_upd < desde_byte:
+        return False, True
+    novos = grok.ler_sessao(pasta, desde_byte=desde_byte).turnos
+    base_sync = {"padrao": {"id": sid, "versao": 0, "pasta": pasta},
+                 "marca_fallback": ((m["fonte_tamanho"], m["fonte_mtime"])
+                                    if m and m.get("fonte_tamanho") is not None else None),
+                 "campos": {"bytes_sync": tam_upd, "assin_sync": assin}}
+    return _aplicar_fast_forward(ctx, imp_g, sessao_origem, novos, "grok", base_sync, "g>c")
+
+
 def grok_para_claude(a, estado, cont, novas):
-    versao_cc = None
+    ctx = {"a": a, "estado": estado, "cont": cont, "novas": novas, "versao_cc": None}
     for pasta, sid in grok.sessoes():
         if (a.grok and sid != a.grok) or a.sessao or a.cascade or a.codex or a.cursor:
             continue
         try:
             m = grok.marca(pasta)
-            if m is not None and os.path.getsize(os.path.join(pasta, "updates.jsonl")) == m.get("bytes_updates"):
+            tam_upd = os.path.getsize(os.path.join(pasta, "updates.jsonl"))
+            if m is not None and tam_upd == m.get("bytes_updates"):
                 cont["g>c espelhos"] += 1                 # veio do Claude e ninguem continuou no Grok
                 continue
             rec = estado["exportadas_grok"].get(sid)
+            _, rec_imp = linhagem.achar_importada(estado["importadas_grok"], "id", sid)
             assin = grok.assinatura(pasta)
             if rec and rec.get("assinatura") == assin and not a.forcar:
+                cont["g>c iguais"] += 1
+                continue
+            if not rec and rec_imp and rec_imp.get("assin_sync") == assin and not a.forcar:
                 cont["g>c iguais"] += 1
                 continue
             if rec and para_claude.achar_sessao(rec["sessao"]) is None and not a.forcar:
                 cont["g>c apagadas_no_claude"] += 1
                 continue
+            divergiu = False
+            if not rec:
+                tratado, divergiu = _avancar_de_grok(ctx, pasta, sid, m, assin)
+                if tratado:
+                    continue
             conv = grok.ler_sessao(pasta)
             if m is not None and len(conv.turnos) <= m["turnos"]:
                 cont["g>c espelhos"] += 1
@@ -497,18 +635,27 @@ def grok_para_claude(a, estado, cont, novas):
             if a.seco:
                 print(f"{rotulo}: {conv.titulo} ({len(conv.turnos)} turnos)")
             else:
-                versao = 0
+                versao, ramo = 0, divergiu
                 if rec:
                     caminho = para_claude.achar_sessao(rec["sessao"])
                     continuada = caminho is not None and \
                         len(claude_jsonl.ler_conversa(caminho, rec["sessao"]).turnos) > rec["turnos"]
                     versao = rec["versao"] + 1 if continuada else rec["versao"]
+                    ramo = ramo or continuada
+                if ramo:
+                    conv.titulo = para_claude.titulo_ramo(conv.titulo, "grok")
                 sessao = para_claude.id_sessao(sid, versao, "grok")
                 cwd = cwd_local(conv.cwd)
-                versao_cc = versao_cc or para_claude.versao_claude()
-                para_claude.gravar_sessao(conv, sessao, para_claude.pasta_do_projeto(cwd), cwd, versao_cc, "grok")
+                ctx["versao_cc"] = ctx["versao_cc"] or para_claude.versao_claude()
+                destino = para_claude.gravar_sessao(conv, sessao, para_claude.pasta_do_projeto(cwd), cwd, ctx["versao_cc"], "grok")
                 estado["exportadas_grok"][sid] = {"sessao": sessao, "versao": versao, "assinatura": assin,
                                                   "turnos": len(conv.turnos)}
+                st_s = linhagem.marca_arquivo(destino)
+                if ID_RE.match(sid):
+                    estado["importadas_grok"][sessao] = {
+                        "id": sid, "versao": 0, "pasta": pasta, "fonte_tamanho": st_s[0], "fonte_mtime": st_s[1],
+                        "turnos_claude": len(conv.turnos), "bytes_sync": tam_upd, "assin_sync": assin,
+                        "origem_nativa": True}
                 gravar_estado(estado)
                 novas.add(sessao)
             cont[rotulo] += 1
@@ -558,7 +705,7 @@ def _sessao_para_codex(a, estado, cont, caminho, sessao):
     marca = (st.st_size, round(st.st_mtime, 3))
     anterior = estado["importadas_codex"].get(sessao)
     if anterior and (anterior.get("fonte_tamanho"), anterior.get("fonte_mtime")) == marca and not a.forcar:
-        cont["c>x iguais"] += 1
+        cont["c>x espelhos" if anterior.get("origem_nativa") else "c>x iguais"] += 1
         return None
     conv = claude_jsonl.ler_conversa(caminho, sessao)
     motivo = ("automaticas" if conv.entrypoint.startswith("sdk") else
@@ -582,13 +729,21 @@ def _conversa_existente(estado, ctx, sessao, prep):
     return (antigo[1], antigo[0]) if antigo else (None, None)
 
 
-def _versao_nova_no_codex(a, srv, ctx, existente):
-    """A conversa que ja existe no Codex pede versao nova? True: continuada la (ou apagada, com --forcar);
-    False: atualiza a mesma; None: apagada no Codex, nao volta."""
+def _versao_nova_no_codex(a, srv, ctx, existente, anterior=None):
+    """(versao_nova, substituir_id): None se apagada no Codex; substituir_id quando a antiga ja foi entregue ao Claude
+    sem divergir e pode ser removida depois da reimportacao limpa."""
     ctx["vivas"] = codex.listar(srv) if ctx["vivas"] is None else ctx["vivas"]
     if existente not in ctx["vivas"]:
-        return True if a.forcar else None
-    return bool(codex.turnos_nativos(codex.ler(srv, existente)))
+        return (True, None) if a.forcar else (None, None)
+    th = codex.ler(srv, existente)
+    nativos = codex.turnos_nativos(th)
+    ant = anterior or {}
+    if nativos == 0 and not ant.get("origem_nativa"):
+        return False, None
+    assin_agora = f"{codex.assinatura(th)}|{th.get('name') or ''}"
+    if ant.get("assin_sync") and ant["assin_sync"] == assin_agora and nativos == ant.get("nativos_sync", 0):
+        return True, existente
+    return True, None
 
 
 def _preparar_para_codex(a, estado, cont, srv, ctx, caminho, sessao):
@@ -600,11 +755,12 @@ def _preparar_para_codex(a, estado, cont, srv, ctx, caminho, sessao):
     cwd = cwd_local(conv.cwd)
     prep = codex.caminho_preparado(sessao, cwd, PREPARO)
     existente, registro_antigo = _conversa_existente(estado, ctx, sessao, prep)
-    versao_nova = _versao_nova_no_codex(a, srv, ctx, existente) if existente else False
+    versao_nova, substituir = _versao_nova_no_codex(a, srv, ctx, existente, anterior) if existente else (False, None)
     if versao_nova is None:
         cont["c>x apagadas_no_codex"] += 1
         return None
-    rotulo = "c>x versoes_novas" if versao_nova else ("c>x atualizadas" if existente else "c>x criadas")
+    rotulo = ("c>x atualizadas" if substituir else
+              "c>x versoes_novas" if versao_nova else ("c>x atualizadas" if existente else "c>x criadas"))
     if a.seco:
         print(f"{rotulo}: {conv.titulo} ({len(conv.turnos)} turnos)")
         cont[rotulo] += 1
@@ -614,15 +770,16 @@ def _preparar_para_codex(a, estado, cont, srv, ctx, caminho, sessao):
         codex.esquecer_registro(prep)
     elif registro_antigo:
         codex.adotar_registro(prep, sessao)
-    # a conversa antiga (continuada no Codex) continua ligada a esta sessao: o titulo dela vem daqui
-    anteriores = list(anterior.get("anteriores") or []) + ([existente] if versao_nova else [])
+    # a conversa antiga (divergida no Codex) continua ligada a esta sessao: o titulo dela vem daqui
+    anteriores = list(anterior.get("anteriores") or []) + ([existente] if (versao_nova and not substituir) else [])
     return {"sessao": sessao, "prep": prep, "cwd": cwd, "titulo": conv.titulo, "marca": marca, "rotulo": rotulo,
-            "versao": anterior.get("versao", 0) + (1 if versao_nova else 0), "anteriores": anteriores}
+            "versao": anterior.get("versao", 0) + (1 if versao_nova else 0), "anteriores": anteriores,
+            "turnos_claude": len(conv.turnos), "substituir": substituir}
 
 
 def _salvar_registro_codex(estado, p, tid):
     rec = {"id": tid, "versao": p["versao"], "fonte_tamanho": p["marca"][0], "fonte_mtime": p["marca"][1],
-           "titulo": p["titulo"]}
+           "titulo": p["titulo"], "turnos_claude": p["turnos_claude"]}
     anteriores = [x for x in p["anteriores"] if isinstance(x, str) and ID_RE.match(x)][-50:]
     if anteriores:
         rec["anteriores"] = anteriores
@@ -658,6 +815,13 @@ def _importar_pendentes(estado, cont, srv, pendentes):
         if antes.get("id") == tid and p["titulo"] != antes.get("titulo"):   # conversa nova ja nasce com o nome
             nomes = codex.listar(srv) if nomes is None else nomes
             _atualizar_nome_codex(srv, tid, (nomes.get(tid) or {}).get("name"), antes.get("titulo"), p["titulo"])
+        sub = p.get("substituir")
+        if k in feitos and sub and sub != tid:
+            try:
+                codex.apagar(srv, sub)
+                estado["exportadas_codex"].pop(sub, None)
+            except (codex.ErroCodex, ValueError) as e:
+                print(f"aviso ao remover versao substituida no Codex ({sub}): {e}", file=sys.stderr)
         _salvar_registro_codex(estado, p, tid)
         if k in feitos:
             importados.append(tid)
@@ -736,25 +900,73 @@ def _pular_codex(ctx, tid, atual, rec, th, assin):
     return None
 
 
+def _avancar_de_codex(ctx, tid, atual, th, assin, sessao_imp, rec_imp):
+    """Fast-forward quando copia do Claude foi continuada no Codex. Devolve (tratado, divergiu, sessao_ou_None)."""
+    a, estado, cont = ctx["a"], ctx["estado"], ctx["cont"]
+    ja_sync = rec_imp.get("nativos_sync", 0)
+    novos, total_prontos = codex.turnos_novos_desde(th, ja_sync)
+    if not novos:
+        if total_prontos == ja_sync:
+            rec_imp["atualizado_sync"] = atual
+            rec_imp["assin_sync"] = assin
+            cont["x>c iguais"] += 1
+            return True, False, None
+        return True, False, None
+    if a.seco:
+        print(f"x>c atualizadas (fast-forward): {sessao_imp} (+{len(novos)} turnos)")
+        cont["x>c atualizadas"] += 1
+        return True, False, None
+    turnos_base = rec_imp.get("turnos_claude")
+    marca_base = ((rec_imp["fonte_tamanho"], rec_imp["fonte_mtime"])
+                  if rec_imp.get("fonte_tamanho") is not None else None)
+    ctx["versao_cc"] = ctx["versao_cc"] or para_claude.versao_claude()
+    status, info = linhagem.tentar_avancar_claude(sessao_imp, turnos_base, marca_base, novos, "codex", ctx["versao_cc"])
+    if status == "avancou":
+        novo_tam, novo_mt, total_t = info
+        rec_imp.update(fonte_tamanho=novo_tam, fonte_mtime=novo_mt, turnos_claude=total_t,
+                       nativos_sync=total_prontos, assin_sync=assin, atualizado_sync=atual)
+        gravar_estado(estado)
+        cont["x>c atualizadas"] += 1
+        return True, False, sessao_imp
+    if status == "sem_novos":
+        rec_imp.update(nativos_sync=total_prontos, assin_sync=assin, atualizado_sync=atual)
+        cont["x>c iguais"] += 1
+        return True, False, None
+    return False, True, None
+
+
 def _codex_para_claude_uma(ctx, tid, atual, sessao_origem):
     """Leva uma conversa do Codex para o Claude; devolve a sessao gravada ou None (contada)."""
     a, estado, cont, srv = ctx["a"], ctx["estado"], ctx["cont"], ctx["srv"]
     exp, vistas = estado["exportadas_codex"], estado["vistas_codex"]
     rec = exp.get(tid)
-    if not a.forcar and atual is not None and ((rec and rec.get("atualizado") == atual) or vistas.get(tid) == atual):
+    sessao_imp, rec_imp = linhagem.achar_importada(estado["importadas_codex"], "id", tid)
+    if not a.forcar and atual is not None and (
+            (rec and rec.get("atualizado") == atual) or vistas.get(tid) == atual or
+            (not rec and rec_imp and rec_imp.get("atualizado_sync") == atual)):
         cont["x>c iguais"] += 1
         return None
     th = codex.ler(srv, tid)
     if codex.importada(th) and codex.turnos_nativos(th):
         _devolver_titulo(a, srv, th, sessao_origem)
     assin = f"{codex.assinatura(th)}|{th.get('name') or ''}"
+    if not rec and rec_imp and rec_imp.get("assin_sync") == assin and not a.forcar:
+        rec_imp["atualizado_sync"] = atual
+        cont["x>c iguais"] += 1
+        return None
     motivo = _pular_codex(ctx, tid, atual, rec, th, assin)
-    conv = None if motivo else codex.conversa_de_thread(th)
-    if conv is not None and not any(t.papel == "usuario" for t in conv.turnos):
-        vistas[tid] = atual
-        motivo = "vazias"
     if motivo:
         cont["x>c " + motivo] += 1
+        return None
+    divergiu = False
+    if not rec and sessao_imp:
+        tratado, divergiu, av = _avancar_de_codex(ctx, tid, atual, th, assin, sessao_imp, rec_imp)
+        if tratado:
+            return av
+    conv = codex.conversa_de_thread(th)
+    if not any(t.papel == "usuario" for t in conv.turnos):
+        vistas[tid] = atual
+        cont["x>c vazias"] += 1
         return None
     rotulo = "x>c atualizadas" if rec else "x>c criadas"
     cont[rotulo] += 1
@@ -762,11 +974,18 @@ def _codex_para_claude_uma(ctx, tid, atual, sessao_origem):
         print(f"{rotulo}: {conv.titulo} ({len(conv.turnos)} turnos)")
         return None
     versao = _versao_no_claude(rec)
+    if divergiu or (rec and versao > rec["versao"]):
+        conv.titulo = para_claude.titulo_ramo(conv.titulo, "codex")
     sessao = para_claude.id_sessao(tid, versao, "codex")
     cwd = cwd_local(conv.cwd)
     ctx["versao_cc"] = ctx["versao_cc"] or para_claude.versao_claude()
-    para_claude.gravar_sessao(conv, sessao, para_claude.pasta_do_projeto(cwd), cwd, ctx["versao_cc"], "codex")
+    destino = para_claude.gravar_sessao(conv, sessao, para_claude.pasta_do_projeto(cwd), cwd, ctx["versao_cc"], "codex")
     exp[tid] = {"sessao": sessao, "versao": versao, "assinatura": assin, "turnos": len(conv.turnos), "atualizado": atual}
+    st_s = linhagem.marca_arquivo(destino)
+    estado["importadas_codex"][sessao] = {
+        "id": tid, "versao": 0, "fonte_tamanho": st_s[0], "fonte_mtime": st_s[1],
+        "turnos_claude": len(conv.turnos), "nativos_sync": codex.turnos_nativos(th),
+        "assin_sync": assin, "atualizado_sync": atual, "titulo": conv.titulo, "origem_nativa": True}
     gravar_estado(estado)
     return sessao
 
@@ -776,15 +995,33 @@ def _codex_para_claude_uma(ctx, tid, atual, sessao_origem):
 def _cursor_pular(a, estado, cont, caminho, sessao, fonte):
     """None se a sessao vai para o Cursor; senao conta o motivo e devolve True."""
     anterior = estado["importadas_cursor"].get(sessao)
-    m = cursor.marca(anterior["pasta"]) if anterior and os.path.isdir(anterior["pasta"]) else None
-    if anterior and m is None and not a.forcar:
+    nativa = bool(anterior and anterior.get("origem_nativa"))
+    existe = bool(anterior and os.path.isdir(anterior["pasta"]) and
+                  os.path.isfile(os.path.join(anterior["pasta"], "store.db")))
+    m = cursor.marca(anterior["pasta"]) if existe else None
+    if anterior and not (m is not None or (nativa and existe)) and not a.forcar:
         cont["c>u apagadas_no_cursor"] += 1
         return True
-    if m is not None and (m.get("fonte_tamanho"), m.get("fonte_mtime")) == (fonte["fonte_tamanho"], fonte["fonte_mtime"]) \
-            and not a.forcar:
-        cont["c>u iguais"] += 1
+    marca_f = (fonte["fonte_tamanho"], fonte["fonte_mtime"])
+    marca_ant = (anterior.get("fonte_tamanho"), anterior.get("fonte_mtime")) if anterior else (None, None)
+    marca_m = (m.get("fonte_tamanho"), m.get("fonte_mtime")) if m else (None, None)
+    if (marca_m == marca_f or marca_ant == marca_f) and not a.forcar:
+        cont["c>u espelhos" if nativa else "c>u iguais"] += 1
         return True
     return None
+
+
+def _cursor_cli_divergiu(anterior, m):
+    if not anterior:
+        return False
+    pasta = anterior["pasta"]
+    if not os.path.isdir(pasta) or not os.path.isfile(os.path.join(pasta, "store.db")):
+        return False
+    if anterior.get("assin_sync"):
+        return cursor.assinatura(pasta) != anterior["assin_sync"]
+    if m is not None:
+        return cursor.turnos(pasta) > m.get("turnos", 0)
+    return bool(anterior.get("origem_nativa"))
 
 
 def para_cursor(a, estado, cont):
@@ -794,8 +1031,8 @@ def para_cursor(a, estado, cont):
 
 
 def _para_cursor_cli(a, estado, cont):
-    """Grava as sessoes do Claude como conversas do CLI do Cursor. Continuada no Cursor nunca e sobrescrita: a versao
-    nova do Claude vira outra conversa e a continuada fica."""
+    """Grava as sessoes do Claude como conversas do CLI do Cursor. Continuada no Cursor sem fast-forward nunca e
+    sobrescrita: a versao nova do Claude vira outra conversa e a continuada fica."""
     if not (os.path.isdir(cursor.pasta_chats()) or cursor.cli()):
         return
     molde = None
@@ -805,8 +1042,8 @@ def _para_cursor_cli(a, estado, cont):
         if not ID_RE.match(sessao) or _fora_do_filtro(a, sessao):
             continue
         try:
-            st = os.stat(caminho)
-            fonte = {"fonte": "claude:" + sessao, "fonte_tamanho": st.st_size, "fonte_mtime": round(st.st_mtime, 3)}
+            marca_f = linhagem.marca_arquivo(caminho)
+            fonte = {"fonte": "claude:" + sessao, "fonte_tamanho": marca_f[0], "fonte_mtime": marca_f[1]}
             if _cursor_pular(a, estado, cont, caminho, sessao, fonte):
                 continue
             conv = claude_jsonl.ler_conversa(caminho, sessao)
@@ -821,19 +1058,29 @@ def _para_cursor_cli(a, estado, cont):
                 cont["c>u sem conversa nativa para molde"] += 1
                 return
             anterior = imp.get(sessao)
+            nativa = bool(anterior and anterior.get("origem_nativa"))
             m = cursor.marca(anterior["pasta"]) if anterior and os.path.isdir(anterior["pasta"]) else None
-            manter = m is not None and cursor.turnos(anterior["pasta"]) > m.get("turnos", 0)   # continuada no Cursor
+            manter = _cursor_cli_divergiu(anterior, m)
             rotulo = "c>u atualizadas" if anterior else "c>u criadas"
             if a.seco:
                 print(f"{rotulo}: {conv.titulo} ({len(conv.turnos)} turnos)")
                 cont[rotulo] += 1
                 continue
-            versao = (anterior["versao"] + 1 if manter or m is None else anterior["versao"]) if anterior else 0
+            versao = ((anterior["versao"] + 1 if manter or (m is None and not nativa) else anterior["versao"])
+                      if anterior else 0)
             aid = cursor.id_para_sessao(sessao, versao)
             pasta = cursor.gravar_conversa(conv, cwd_local(conv.cwd), molde, aid, conv.titulo, fonte)
             if anterior and not manter and os.path.normcase(anterior["pasta"]) != os.path.normcase(pasta):
-                cursor.apagar(anterior["pasta"])
-            imp[sessao] = {"id": aid, "versao": versao, "pasta": pasta}
+                if nativa:
+                    linhagem.arquivar_substituida(PASTA_ESTADO, "cursor", anterior["id"], anterior["pasta"])
+                    cursor.apagar(anterior["pasta"], permitir_nativa=True)
+                    estado["exportadas_cursor"].pop(anterior["id"], None)
+                else:
+                    cursor.apagar(anterior["pasta"])
+            imp[sessao] = {"id": aid, "versao": versao, "pasta": pasta,
+                           "fonte_tamanho": marca_f[0], "fonte_mtime": marca_f[1],
+                           "turnos_claude": len(conv.turnos),
+                           "conv_turnos_sync": len(cursor.ler_conversa(pasta).turnos)}
             gravar_estado(estado)
             cont[rotulo] += 1
         except (OSError, ValueError, KeyError, sqlite3.Error) as e:
@@ -935,7 +1182,7 @@ def _app_sem_mudanca(a, rec, agora_msgs, fonte):
     if rec and agora_msgs is None and not a.forcar:
         return "apagadas_no_app"
     if rec and (rec.get("fonte_tamanho"), rec.get("fonte_mtime")) == fonte and not a.forcar:
-        return "iguais"
+        return "espelhos" if rec.get("origem_nativa") else "iguais"
     return None
 
 
@@ -950,8 +1197,7 @@ def _app_fica_de_fora(conv, sessao, estado):
 
 def _sessao_para_app(a, estado, cont, c, ctx, caminho, sessao):
     imp = estado["importadas_cursor_app"]
-    st = os.stat(caminho)
-    fonte = (st.st_size, round(st.st_mtime, 3))
+    fonte = linhagem.marca_arquivo(caminho)
     rec = imp.get(sessao)
     agora_msgs = cursor_app.mensagens(c, rec["id"]) if rec else None
     motivo = _app_sem_mudanca(a, rec, agora_msgs, fonte)
@@ -969,7 +1215,14 @@ def _sessao_para_app(a, estado, cont, c, ctx, caminho, sessao):
         cont["c>ua sem conversa nativa para molde"] += 1
         ctx["parar"] = True
         return
-    continuada = rec is not None and agora_msgs is not None and agora_msgs > rec["mensagens"]
+    nativa = bool(rec and rec.get("origem_nativa"))
+    continuada = False
+    if rec is not None and agora_msgs is not None:
+        if rec.get("assin_sync"):
+            _, assin_agora = cursor.ler_conversa_app(rec["id"])
+            continuada = agora_msgs > rec["mensagens"] or assin_agora != rec["assin_sync"]
+        else:
+            continuada = agora_msgs > rec["mensagens"]
     versao = (rec["versao"] + 1 if continuada else rec["versao"]) if rec else 0
     rotulo = "c>ua versao_nova" if continuada else "c>ua atualizadas" if rec else "c>ua criadas"
     cont[rotulo] += 1
@@ -978,13 +1231,18 @@ def _sessao_para_app(a, estado, cont, c, ctx, caminho, sessao):
         return
     cid = cursor_app.id_para_sessao(sessao, versao)
     qtd = cursor_app.gravar(c, conv, cid, projeto[0], projeto[1], molde, int(time.time() * 1000))
-    imp[sessao] = {"id": cid, "versao": versao, "mensagens": qtd, "fonte_tamanho": fonte[0], "fonte_mtime": fonte[1]}
+    if nativa and not continuada and cid != rec["id"]:
+        cursor_app.apagar(c, rec["id"])
+        estado["exportadas_cursor"].pop(rec["id"], None)
+    imp[sessao] = {"id": cid, "versao": versao, "mensagens": qtd, "fonte_tamanho": fonte[0], "fonte_mtime": fonte[1],
+                   "turnos_claude": len(conv.turnos)}
     gravar_estado(estado)
 
 
 # ---------------------------------------------------------------- Cursor -> Claude
-def _cursor_exportar(a, estado, cont, novas, ctx, aid, assin, ler):
+def _cursor_exportar(ctx, aid, assin, ler, ramo=False, extra_imp=None):
     """Grava no Claude uma conversa do Cursor (do CLI ou do app); ler() devolve a Conversa so se precisar."""
+    a, estado, cont, novas = ctx["a"], ctx["estado"], ctx["cont"], ctx["novas"]
     exp = estado["exportadas_cursor"]
     rec = exp.get(aid)
     if rec and rec.get("assinatura") == assin and not a.forcar:
@@ -1003,12 +1261,24 @@ def _cursor_exportar(a, estado, cont, novas, ctx, aid, assin, ler):
         print(f"{rotulo}: {conv.titulo} ({len(conv.turnos)} turnos)")
         return
     versao = _versao_no_claude(rec)
+    if ramo or (rec and versao > rec["versao"]):
+        conv.titulo = para_claude.titulo_ramo(conv.titulo, "cursor")
     sessao = para_claude.id_sessao(aid, versao, "cursor")
     cwd = cwd_local(conv.cwd)
     ctx["versao_cc"] = ctx.get("versao_cc") or para_claude.versao_claude()
-    para_claude.gravar_sessao(conv, sessao, para_claude.pasta_do_projeto(cwd), cwd, ctx["versao_cc"], "cursor")
-    exp[aid] = {"sessao": sessao, "versao": versao, "assinatura": assin, "turnos": len(conv.turnos),
-                "de": ctx.get("de", "cli")}         # de qual destino do Cursor veio (o CLI e o app sao dois)
+    destino = para_claude.gravar_sessao(conv, sessao, para_claude.pasta_do_projeto(cwd), cwd, ctx["versao_cc"], "cursor")
+    de = ctx.get("de", "cli")
+    exp[aid] = {"sessao": sessao, "versao": versao, "assinatura": assin, "turnos": len(conv.turnos), "de": de}
+    st_s = linhagem.marca_arquivo(destino)
+    if de == "cli" and extra_imp and ID_RE.match(aid):
+        estado["importadas_cursor"][sessao] = {
+            "id": aid, "versao": 0, "pasta": extra_imp["pasta"], "fonte_tamanho": st_s[0], "fonte_mtime": st_s[1],
+            "turnos_claude": len(conv.turnos), "conv_turnos_sync": len(conv.turnos), "assin_sync": assin,
+            "origem_nativa": True}
+    elif de == "app" and extra_imp and ID_RE.match(aid):
+        estado["importadas_cursor_app"][sessao] = {
+            "id": aid, "versao": 0, "mensagens": extra_imp["mensagens"], "fonte_tamanho": st_s[0],
+            "fonte_mtime": st_s[1], "turnos_claude": len(conv.turnos), "assin_sync": assin, "origem_nativa": True}
     gravar_estado(estado)
     novas.add(sessao)
 
@@ -1017,9 +1287,44 @@ def _cursor_pular_filtro(a, aid):
     return bool((a.cursor and aid != a.cursor) or a.sessao or a.cascade or a.grok or a.codex)
 
 
+def _avancar_de_cursor_cli(ctx, pasta, aid, m, assin):
+    """Fast-forward quando copia do Claude foi continuada no CLI do Cursor. Devolve (tratado, divergiu)."""
+    imp_u = ctx["estado"]["importadas_cursor"]
+    sessao_imp, rec_imp = linhagem.achar_importada(imp_u, "id", aid)
+    sessao_origem = sessao_imp or (linhagem.sessao_da_marca(m.get("fonte")) if m else None)
+    if not sessao_origem:
+        return False, False
+    conv_cheia = cursor.ler_conversa(pasta)
+    base_idx = rec_imp["conv_turnos_sync"] if (rec_imp and "conv_turnos_sync" in rec_imp) else (
+        m.get("turnos", 0) * 2 if m else 0)
+    base_sync = {"padrao": {"id": aid, "versao": 0, "pasta": pasta},
+                 "marca_fallback": ((m["fonte_tamanho"], m["fonte_mtime"])
+                                    if m and m.get("fonte_tamanho") is not None else None),
+                 "campos": {"conv_turnos_sync": len(conv_cheia.turnos), "assin_sync": assin}}
+    return _aplicar_fast_forward(ctx, imp_u, sessao_origem, conv_cheia.turnos[base_idx:], "cursor", base_sync, "u>c")
+
+
+def _avancar_de_cursor_app(ctx, cid, dados, assin):
+    """Fast-forward quando copia do Claude foi continuada no app do Cursor. Devolve (tratado, divergiu)."""
+    imp_ua = ctx["estado"]["importadas_cursor_app"]
+    sessao_imp, rec_imp = linhagem.achar_importada(imp_ua, "id", cid)
+    marca_app = dados.get("tagteam") if isinstance(dados.get("tagteam"), dict) else {}
+    sessao_origem = sessao_imp or linhagem.sessao_da_marca(marca_app.get("fonte"))
+    if not sessao_origem:
+        return False, False
+    desde_cab = rec_imp["mensagens"] if rec_imp else (
+        marca_app["mensagens"] if isinstance(marca_app.get("mensagens"), int) else 0)
+    conv_novos, _ = cursor.ler_conversa_app(cid, desde_cabecalho=desde_cab)
+    total_msgs = cursor.contar_cabecalhos_app(cid)
+    base_sync = {"padrao": {"id": cid, "versao": 0, "mensagens": total_msgs},
+                 "marca_fallback": None,
+                 "campos": {"mensagens": total_msgs, "assin_sync": assin}}
+    return _aplicar_fast_forward(ctx, imp_ua, sessao_origem, conv_novos.turnos, "cursor", base_sync, "u>c")
+
+
 def cursor_para_claude(a, estado, cont, novas):
     """Conversas do CLI (~/.cursor/chats) e do app (state.vscdb, so leitura) viram sessoes "[Cursor] ..." no Claude."""
-    ctx = {}
+    ctx = {"a": a, "estado": estado, "cont": cont, "novas": novas}
     for pasta, aid in cursor.conversas():
         if _cursor_pular_filtro(a, aid):
             continue
@@ -1028,8 +1333,18 @@ def cursor_para_claude(a, estado, cont, novas):
             if m is not None and cursor.turnos(pasta) <= m.get("turnos", 0):
                 cont["u>c espelhos"] += 1                # veio do Claude e ninguem continuou no Cursor
                 continue
-            _cursor_exportar(a, estado, cont, novas, ctx, aid, cursor.assinatura(pasta),
-                             lambda p=pasta: cursor.ler_conversa(p))
+            assin = cursor.assinatura(pasta)
+            _, rec_imp = linhagem.achar_importada(estado["importadas_cursor"], "id", aid)
+            if not estado["exportadas_cursor"].get(aid) and rec_imp and rec_imp.get("assin_sync") == assin and not a.forcar:
+                cont["u>c iguais"] += 1
+                continue
+            divergiu = False
+            if not estado["exportadas_cursor"].get(aid):
+                tratado, divergiu = _avancar_de_cursor_cli(ctx, pasta, aid, m, assin)
+                if tratado:
+                    continue
+            _cursor_exportar(ctx, aid, assin, lambda p=pasta: cursor.ler_conversa(p),
+                             ramo=divergiu, extra_imp={"pasta": pasta})
         except (OSError, ValueError, KeyError, sqlite3.Error) as e:
             cont["erro"] += 1
             print(f"erro na conversa {aid} (cursor -> claude): {type(e).__name__}: {e}", file=sys.stderr)
@@ -1048,7 +1363,17 @@ def cursor_para_claude(a, estado, cont, novas):
             continue
         try:
             conv, assin = cursor.ler_conversa_app(cid)
-            _cursor_exportar(a, estado, cont, novas, dict(ctx, de="app"), cid, assin, lambda c=conv: c)
+            _, rec_imp = linhagem.achar_importada(estado["importadas_cursor_app"], "id", cid)
+            if not estado["exportadas_cursor"].get(cid) and rec_imp and rec_imp.get("assin_sync") == assin and not a.forcar:
+                cont["u>c iguais"] += 1
+                continue
+            divergiu = False
+            if not estado["exportadas_cursor"].get(cid):
+                tratado, divergiu = _avancar_de_cursor_app(ctx, cid, dados, assin)
+                if tratado:
+                    continue
+            _cursor_exportar(dict(ctx, de="app"), cid, assin, lambda c=conv: c,
+                             ramo=divergiu, extra_imp={"mensagens": cursor.contar_cabecalhos_app(cid)})
         except (OSError, ValueError, KeyError, sqlite3.Error) as e:
             cont["erro"] += 1
             print(f"erro na conversa {cid} (app do cursor -> claude): {type(e).__name__}: {e}", file=sys.stderr)
@@ -1150,7 +1475,7 @@ def main():
     ap.add_argument("--seco", action="store_true", help="so mostra o que faria")
     ap.add_argument("--forcar", action="store_true",
                     help="regrava mesmo sem mudanca e recria a apagada no destino (nunca a continuada)")
-    ap.add_argument("--atraso", type=int, default=0, help="segundos de espera antes (deixa outra sincronizacao de pastas terminar)")
+    ap.add_argument("--atraso", type=int, default=0, help="segundos de espera antes (deixa o sync do cerebro terminar)")
     a = ap.parse_args()
     a.so = None
     for valor in (a.sessao, a.cascade, a.grok, a.codex, a.cursor):

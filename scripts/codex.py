@@ -342,6 +342,28 @@ def conversa_de_thread(th):
     return conv
 
 
+def turnos_novos_desde(th, ja_sincronizados=0):
+    """(novos Turnos nativos prontos desde ja_sincronizados, total de turnos nativos prontos)."""
+    criada = _quando(th.get("createdAt"), datetime.now(timezone.utc))
+    prontos = [t for t in th.get("turns") or []
+               if isinstance(t, dict) and TURNO_NATIVO.match(str(t.get("id", ""))) and t.get("status") != "inProgress"]
+    turnos = []
+    for turno in prontos[ja_sincronizados:]:
+        quando = _quando(turno.get("startedAt"), _quando(turno.get("completedAt"), criada))
+        for item in (i for i in turno.get("items") or [] if isinstance(i, dict)):
+            _acrescentar(turnos, item, quando)
+    for t in turnos:
+        t.texto = _cortar(t.texto)
+    return turnos, len(prontos)
+
+
+def apagar(srv, tid):
+    """Apaga uma thread substituida no Codex pela API oficial."""
+    if not isinstance(tid, str) or not TURNO_NATIVO.match(tid):
+        raise ValueError("id de thread invalido")
+    srv.chamar("thread/delete", {"threadId": tid})
+
+
 # ---------------------------------------------------------------- importacao (Claude -> Codex)
 ARQ_REGISTROS = "external_agent_session_imports.json"
 TIPOS_DA_FONTE = ("user", "assistant", "ai-title", "custom-title", "summary")   # o que a importacao le
@@ -349,7 +371,7 @@ MAX_LOTE_BYTES = 150 * 1024 * 1024
 
 
 def normalizar(caminho):
-    """Mesma chave para o mesmo arquivo: sem o prefixo \\\\?\\, nome curto (USUARI~1) expandido como o Codex devolve,
+    """Mesma chave para o mesmo arquivo: sem o prefixo \\\\?\\, nome curto (ANIMAT~2) expandido como o Codex devolve,
     sem diferenca de caixa. realpath expande o trecho que existe mesmo quando o arquivo ja foi apagado."""
     if caminho.startswith(PREFIXO_LONGO):
         caminho = caminho[len(PREFIXO_LONGO):]

@@ -323,7 +323,10 @@ class TestFluxo(Base):
         cont = collections.Counter()
         with mock.patch("sys.stdout", io.StringIO()):
             sincronizar.cursor_para_claude(args(cursor=cid), estado, cont, novas)
-        self.assertEqual(cont["u>c criadas"], 1)
+        self.assertEqual(cont["u>c atualizadas"], 1)
+        self.assertEqual(novas, {self.SESSAO})
+        self.assertEqual(sincronizar.claude_jsonl.ler_conversa(self.caminho, self.SESSAO).turnos[-1].texto,
+                         "continuei no app")
 
     def test_marca_na_conversa_vale_sem_o_estado(self):
         estado = sincronizar.ler_estado()

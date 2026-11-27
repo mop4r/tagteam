@@ -55,7 +55,7 @@ limit, the agent that is about to stop **writes a five-line handoff** so the nex
 | ▶️ **Native resume everywhere** | Sessions land in each tool's own storage: `claude --resume`, the Antigravity sidebar, `agy`, `grok --resume`, the Codex app, `codex resume` and `cursor-agent --resume`. |
 | 🤝 **Automatic handoff** | At 95% of the Claude limit (or the Gemini quota) a hook makes the agent write *Request / Done / In progress / Next step / Watch out* before stopping. |
 | 🧠 **Same brain in every tool** | Gemini and Grok read your `~/.claude/CLAUDE.md`, the same skills, the Claude plugins and your MCP servers — by reference, never copied. Codex too: a generated `AGENTS.md` block, one junction per skill, Claude's plugins installed natively from Claude's own marketplaces, and the same MCP servers. Cursor already reads Claude's skills, `CLAUDE.md` and plugins by itself; TagTeam adds the MCP servers and the hook. |
-| 🛡️ **Never clobbers your work** | A conversation continued on the other side is never overwritten: a new version is created and yours stays. Mirrors never bounce back. |
+| 🛡️ **Single thread, never clobbers** | Relaying across AIs fast-forwards the same thread with zero duplicates (replacing superseded copies cleanly). Only true concurrent edits in two AIs at once create an explicit `(<AI> branch)` fork so nothing is ever lost. Mirrors never bounce back. |
 | 💻 **Multi-PC friendly** | Paths from another machine (other user, other drive) are remapped to this one; state is per PC. |
 | 🪶 **Zero dependencies** | Pure Python standard library (SQLite, protobuf parsing, TOML) + the official installers of each CLI. |
 | 🔒 **Local only** | Nothing leaves your machine. No telemetry, no server, no API keys. |

@@ -86,7 +86,7 @@ def _ferramenta(u):
     return f"`[{nome}]` {desc}".rstrip()
 
 
-def ler_sessao(pasta):
+def ler_sessao(pasta, desde_byte=0):
     """updates.jsonl -> turnos. Pedacos seguidos da mesma mensagem viram uma; ferramenta vira uma linha curta."""
     resumo = _ler_json(os.path.join(pasta, "summary.json"), {}) or {}
     info = resumo.get("info") if isinstance(resumo.get("info"), dict) else {}
@@ -103,6 +103,8 @@ def ler_sessao(pasta):
         buffer, papel_buf = [], None
 
     with open(os.path.join(pasta, "updates.jsonl"), "rb") as f:
+        if desde_byte > 0:
+            f.seek(desde_byte)
         for bruta in f:
             if len(bruta) > MAX_LINHA:
                 continue
@@ -199,7 +201,7 @@ def gravar_sessao(conv, sid, cwd, marca_fonte, prefixo_titulo=""):
     return destino
 
 
-def apagar(pasta):
-    """Tira a versao antiga (nunca uma sessao nativa: so as que levam a marca do import)."""
-    if marca(pasta) is not None and os.path.isdir(pasta):
+def apagar(pasta, permitir_nativa=False):
+    """Tira a versao antiga (por padrao nunca uma sessao nativa: so as que levam a marca do import)."""
+    if (permitir_nativa or marca(pasta) is not None) and os.path.isdir(pasta):
         shutil.rmtree(pasta)

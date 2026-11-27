@@ -36,7 +36,7 @@ vai parar **escreve uma passagem de cinco linhas** para a próxima saber exatame
 - ▶️ **Resume nativo em todas:** `claude --resume`, a lista do Antigravity, `agy`, `grok --resume`, o app do Codex, `codex resume` e `cursor-agent --resume`.
 - 🤝 **Passagem automática** a 95% do limite do Claude (ou da cota do Gemini).
 - 🧠 **O mesmo cérebro:** Gemini e Grok leem o seu `~/.claude/CLAUDE.md`, as skills, os plugins do Claude e os servidores MCP, por referência; o Codex recebe um bloco no `AGENTS.md` que aponta para as mesmas regras.
-- 🛡️ **Nunca sobrescreve trabalho seu:** conversa continuada do outro lado vira versão nova; espelho não volta.
+- 🛡️ **Linhagem única sem perder trabalho:** revezar a mesma conversa entre as IAs faz *fast-forward* no mesmo fio sem duplicar; só quando as duas IAs respondem ao mesmo tempo nasce um fork explícito `(<IA> branch)` / `(ramo <IA>)`, sem perder nada. Espelho nunca volta.
 - 💻 **Vários PCs:** caminhos de outra máquina são trocados pelos desta; o estado é por PC.
 - 🪶 **Zero dependências** e 🔒 **tudo local**, sem telemetria.
 

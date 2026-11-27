@@ -363,9 +363,9 @@ def id_para_sessao(sessao, versao=0):
     return str(uuid.uuid5(uuid.UUID("6a1f3c2e-9b7d-4e5a-8c1f-2d3e4f5a6b7c"), f"cursor:{sessao}" + (f":{versao}" if versao else "")))
 
 
-def apagar(pasta):
-    """Tira uma copia nossa (nunca uma conversa nativa: so as que tem a marca)."""
-    if marca(pasta) is not None and os.path.isdir(pasta):
+def apagar(pasta, permitir_nativa=False):
+    """Tira uma copia nossa (por padrao nunca uma conversa nativa: so as que tem a marca)."""
+    if (permitir_nativa or marca(pasta) is not None) and os.path.isdir(pasta):
         shutil.rmtree(pasta)
 
 
@@ -445,14 +445,14 @@ def _texto_da_mensagem(b):
     return texto.strip()
 
 
-def ler_conversa_app(cid):
-    """(Conversa, assinatura) de uma conversa do app."""
+def ler_conversa_app(cid, desde_cabecalho=0):
+    """(Conversa, assinatura) de uma conversa do app (desde_cabecalho filtra so as mensagens novas)."""
     c = _abrir_app()
     try:
         dados = _valor(c, f"composerData:{cid}") or {}
         cabecalhos = _cabecalhos(c, cid)
         turnos = []
-        for h in cabecalhos:
+        for h in cabecalhos[desde_cabecalho:]:
             b = _valor(c, f"bubbleId:{cid}:{h['bubbleId']}")
             if not isinstance(b, dict):
                 continue
@@ -476,3 +476,12 @@ def ler_conversa_app(cid):
     primeiro = next((t.texto for t in turnos if t.papel == "usuario"), "")
     conv.titulo = (nome or (primeiro.splitlines()[0] if primeiro else "") or "Conversa do Cursor").strip()[:80]
     return conv, assinatura_app(dados, cabecalhos)
+
+
+def contar_cabecalhos_app(cid):
+    """Quantidade atual de mensagens (cabecalhos) de uma conversa no banco do app (somente leitura)."""
+    c = _abrir_app()
+    try:
+        return len(_cabecalhos(c, cid))
+    finally:
+        c.close()

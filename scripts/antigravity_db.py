@@ -516,3 +516,33 @@ def situacao(cascade, base=None):
     if marca is None:
         return (None, total, None, None)
     return (marca[0], total, marca[1], marca[2])
+
+
+def origem_importada(cascade, base=None):
+    """(sessao, fonte_tamanho, fonte_mtime, passos) se veio do Claude; senao None."""
+    base = base or base_padrao()
+    caminho = os.path.join(base, "conversations", cascade + ".db")
+    if not os.path.exists(caminho):
+        return None
+    c = _ro(caminho)
+    try:
+        if not c.execute("select 1 from sqlite_master where name=?", (TABELA_MARCA,)).fetchone():
+            return None
+        row = c.execute("select sessao, fonte_tamanho, fonte_mtime, passos from claude_import").fetchone()
+        return tuple(row) if row else None
+    finally:
+        c.close()
+
+
+def ultimo_idx_feito(cascade, base=None):
+    """Maior idx de passo concluido (STATUS_FEITO) na conversa, ou -1 se nao houver."""
+    base = base or base_padrao()
+    caminho = os.path.join(base, "conversations", cascade + ".db")
+    if not os.path.exists(caminho):
+        return -1
+    c = _ro(caminho)
+    try:
+        row = c.execute("select max(idx) from steps where status=?", (STATUS_FEITO,)).fetchone()
+        return row[0] if row and isinstance(row[0], int) else -1
+    finally:
+        c.close()

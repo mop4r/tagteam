@@ -20,6 +20,6 @@ When Claude Code hits its 5-hour or 7-day usage limit mid-task, switching to Gem
 - Automatic handoff at 95% of the Claude Code usage limit or Gemini quota: writes a five-line summary (Request, Done, In progress, Next step, Watch out) before stopping.
 - Shared environment by reference (never copied): `~/.claude/CLAUDE.md`, skills, plugins, and MCP servers mirrored to Gemini (`~/.gemini`), Grok (`~/.grok`), Codex (`~/.codex`) and Cursor (`~/.cursor`, which already reads Claude's skills, CLAUDE.md and plugins natively).
 - Interactive resume pickers for `agy` (`agy_resume.py`) and Grok (`grok-resume.exe`) with Start Menu shortcuts.
-- Conflict-safe sync: continued copies are never overwritten; mirrors never bounce back; multi-PC path remapping.
+- Single-lineage, conflict-safe sync: linear handoffs across all 5 AIs fast-forward the same thread with zero duplicates (replacing superseded copies cleanly); only true concurrent edits in two AIs at once create an explicit `(<AI> branch)` fork so nothing is lost; mirrors never bounce back; multi-PC path remapping.
 - 100% local, zero telemetry, zero API proxy.
 - Terminal setup wizard and live monitor (`tagteam.py`): pick which AIs to sync and the options (folder, shared environment, shortcuts, status line, handoff, excluded folders), install with progress, then watch health, chats per AI, recent runs and errors; add or remove an AI, repair, update or uninstall from the same screen. Options live in `~/.tagteam/config.json`.
