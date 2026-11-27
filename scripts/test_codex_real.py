@@ -101,34 +101,38 @@ class TestCodexReal(unittest.TestCase):
         # 2) nada mudou: nem importa
         estado, cont = self.rodada()
         self.assertEqual(cont["c>x iguais"], 2, cont)
-        # 3) a sessao andou no Claude: a MESMA conversa recebe o turno novo
+        # 3) a sessao andou no Claude (em NOVO app-server, como na vida real!): recebe o turno novo,
+        # atualiza updatedAt para a data real do novo turno e substitui a copia antiga sem duplicar
         self.sessao(SESSAO_A, ["primeira pergunta", "segunda com acento ç e emoji 🙂", "terceira"], titulo="Teste do ciclo")
+        self.srv.fechar()
+        self.srv = codex.Servidor(home=self.home_codex,
+                                  env_extra={"USERPROFILE": sincronizar.PREPARO, "HOME": sincronizar.PREPARO}).__enter__()
         estado, cont = self.rodada()
         self.assertEqual(cont["c>x atualizadas"], 1, cont)
-        self.assertEqual(estado["importadas_codex"][SESSAO_A]["id"], tid_a)
-        self.assertEqual(self.perguntas_no_codex(tid_a)[-1], "terceira")
-        self.assertEqual(len(codex.listar(self.srv)), 2)                # sem duplicar
+        tid_a2 = estado["importadas_codex"][SESSAO_A]["id"]
+        self.assertEqual(self.perguntas_no_codex(tid_a2)[-1], "terceira")
+        self.assertEqual(len(codex.listar(self.srv)), 2)                # sem duplicar (antiga apagada)
+        self.assertEqual(codex.ler(self.srv, tid_a2).get("updatedAt"),
+                         codex.ler(self.srv, tid_a2)["turns"][-1]["completedAt"])
         # 4) Codex -> Claude: espelho puro nao volta
         cont2, novas = Counter(), set()
         sincronizar.codex_para_claude(args(), estado, cont2, novas, self.srv)
         self.assertEqual((cont2["x>c espelhos"], len(novas)), (2, 0), cont2)
         # 5) apagada no Codex nao volta; com --forcar volta como conversa nova
-        self.srv.chamar("thread/delete", {"threadId": tid_a})
+        self.srv.chamar("thread/delete", {"threadId": tid_a2})
         self.sessao(SESSAO_A, ["primeira pergunta", "segunda com acento ç e emoji 🙂", "terceira", "quarta"])
         estado, cont = self.rodada()
         self.assertEqual(cont["c>x apagadas_no_codex"], 1, cont)
         estado, cont = self.rodada(forcar=True)
         novo = estado["importadas_codex"][SESSAO_A]["id"]
-        self.assertNotEqual(novo, tid_a)
+        self.assertNotEqual(novo, tid_a2)
         self.assertEqual(self.perguntas_no_codex(novo)[-1], "quarta")
         self.assertEqual(estado["importadas_codex"][SESSAO_A]["versao"], 1)
 
     def test_resposta_que_continua_depois_da_importacao_nao_vira_versao_nova(self):
-        """Sessao importada no meio de uma resposta: a importacao seguinte acrescenta um turno "rollout-N" (so
-        respostas). Isso nao e conversa continuada no Codex: a mesma conversa segue sendo atualizada."""
+        """Sessao importada no meio de uma resposta: ao receber mais respostas, substitui sem duplicar nem virar fork."""
         caminho = self.sessao(SESSAO_A, ["primeira"])
         estado, _ = self.rodada()
-        tid = estado["importadas_codex"][SESSAO_A]["id"]
         with open(caminho, encoding="utf-8") as f:
             ultima = json.loads(f.read().splitlines()[-1])
         for i in range(2):                                   # mais respostas do assistente, sem pergunta nova
@@ -138,10 +142,8 @@ class TestCodexReal(unittest.TestCase):
                 f.write(json.dumps(ultima) + "\n")
             estado, cont = self.rodada()
             self.assertEqual(cont["c>x versoes_novas"], 0, cont)
-            self.assertEqual(estado["importadas_codex"][SESSAO_A]["id"], tid)
+        tid = estado["importadas_codex"][SESSAO_A]["id"]
         th = codex.ler(self.srv, tid)
-        self.assertTrue(any(str(x["id"]).startswith("rollout-") for x in th["turns"]),
-                        [x["id"] for x in th["turns"]])           # o caso que enganou a regra antiga aconteceu
         self.assertEqual(codex.turnos_nativos(th), 0)
         self.assertIn("continuacao 1", codex.conversa_de_thread(th).turnos[-1].texto)
         self.assertEqual(len(codex.listar(self.srv)), 1)
@@ -149,26 +151,25 @@ class TestCodexReal(unittest.TestCase):
     def test_estado_perdido_nao_duplica(self):
         self.sessao(SESSAO_A, ["uma"])
         estado, _ = self.rodada()
-        tid = estado["importadas_codex"][SESSAO_A]["id"]
         os.remove(sincronizar.ESTADO)                                   # PC perdeu o estado
         self.sessao(SESSAO_A, ["uma", "duas"])
         estado, cont = self.rodada()
-        self.assertEqual(estado["importadas_codex"][SESSAO_A]["id"], tid, cont)
-        self.assertEqual(len(codex.listar(self.srv)), 1)
+        self.assertEqual(len(codex.listar(self.srv)), 1, cont)
+        self.assertEqual(self.perguntas_no_codex(estado["importadas_codex"][SESSAO_A]["id"]), ["uma", "duas"])
 
     def test_importacao_antiga_por_outro_caminho_e_adotada(self):
-        """Conversa importada pelo proprio Codex (outro caminho da mesma sessao): atualiza a que existe."""
+        """Conversa importada pelo proprio Codex (outro caminho da mesma sessao): substitui sem duplicar."""
         antigo = os.path.join(sincronizar.PREPARO, ".claude", "projects", "velho")
         os.makedirs(antigo)
         fonte = self.sessao(SESSAO_A, ["uma"], cwd=self.workspace)
         shutil.copy(fonte, os.path.join(antigo, SESSAO_A + ".jsonl"))
         feitos, _ = codex.importar(self.srv, [(os.path.join(antigo, SESSAO_A + ".jsonl"), self.workspace, "x")])
-        tid = next(iter(feitos.values()))
+        self.assertEqual(len(feitos), 1)
         shutil.rmtree(antigo)
         self.sessao(SESSAO_A, ["uma", "duas"], cwd=self.workspace)
         estado, cont = self.rodada()
-        self.assertEqual(estado["importadas_codex"][SESSAO_A]["id"], tid, cont)
-        self.assertEqual(len(codex.listar(self.srv)), 1)
+        tid = estado["importadas_codex"][SESSAO_A]["id"]
+        self.assertEqual(len(codex.listar(self.srv)), 1, cont)
         self.assertEqual(self.perguntas_no_codex(tid), ["uma", "duas"])
 
 

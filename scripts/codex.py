@@ -512,11 +512,11 @@ def _importar_lote(srv, lote, feitos, falhas):
 _SQL_ALINHAR_MS = (
     "update threads set updated_at = recency_at, created_at = min(created_at, recency_at), "
     "updated_at_ms = recency_at_ms, created_at_ms = min(created_at_ms, recency_at_ms) "
-    "where id = ? and recency_at > 0 and updated_at > recency_at + 60"
+    "where id = ? and recency_at > 0 and abs(updated_at - recency_at) > 60"
 )
 _SQL_ALINHAR = (
     "update threads set updated_at = recency_at, created_at = min(created_at, recency_at) "
-    "where id = ? and recency_at > 0 and updated_at > recency_at + 60"
+    "where id = ? and recency_at > 0 and abs(updated_at - recency_at) > 60"
 )
 
 
@@ -543,7 +543,7 @@ def alinhar_datas(ids, home=None):
                                 (tid,)).fetchone()
                 if row and row[1]:
                     with contextlib.suppress(OSError):
-                        if os.path.getmtime(row[1]) > row[0] + 60:
+                        if abs(os.path.getmtime(row[1]) - row[0]) > 60:
                             os.utime(row[1], (row[0], row[0]))
             total += c.execute(_SQL_ALINHAR_MS if com_ms else _SQL_ALINHAR, (tid,)).rowcount
         c.commit()

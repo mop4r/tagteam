@@ -730,8 +730,9 @@ def _conversa_existente(estado, ctx, sessao, prep):
 
 
 def _versao_nova_no_codex(a, srv, ctx, existente, anterior=None):
-    """(versao_nova, substituir_id): None se apagada no Codex; substituir_id quando a antiga ja foi entregue ao Claude
-    sem divergir e pode ser removida depois da reimportacao limpa."""
+    """(versao_nova, substituir_id): None se apagada no Codex; substituir_id quando a copia existente nao divergiu e
+    deve ser substituida por reimportacao limpa (o importador incremental do Codex pula silenciosamente entre
+    processos do app-server e nao atualiza updated_at/recency_at ao anexar turnos)."""
     ctx["vivas"] = codex.listar(srv) if ctx["vivas"] is None else ctx["vivas"]
     if existente not in ctx["vivas"]:
         return (True, None) if a.forcar else (None, None)
@@ -739,7 +740,7 @@ def _versao_nova_no_codex(a, srv, ctx, existente, anterior=None):
     nativos = codex.turnos_nativos(th)
     ant = anterior or {}
     if nativos == 0 and not ant.get("origem_nativa"):
-        return False, None
+        return True, existente
     assin_agora = f"{codex.assinatura(th)}|{th.get('name') or ''}"
     if ant.get("assin_sync") and ant["assin_sync"] == assin_agora and nativos == ant.get("nativos_sync", 0):
         return True, existente
@@ -768,13 +769,15 @@ def _preparar_para_codex(a, estado, cont, srv, ctx, caminho, sessao):
     codex.preparar(caminho, sessao, cwd, PREPARO)
     if versao_nova:
         codex.esquecer_registro(prep)
+        if registro_antigo:
+            codex.esquecer_registro(registro_antigo)
     elif registro_antigo:
         codex.adotar_registro(prep, sessao)
     # a conversa antiga (divergida no Codex) continua ligada a esta sessao: o titulo dela vem daqui
     anteriores = list(anterior.get("anteriores") or []) + ([existente] if (versao_nova and not substituir) else [])
+    nova_versao = anterior.get("versao", 0) + (1 if (versao_nova and not substituir) else 0)
     return {"sessao": sessao, "prep": prep, "cwd": cwd, "titulo": conv.titulo, "marca": marca, "rotulo": rotulo,
-            "versao": anterior.get("versao", 0) + (1 if versao_nova else 0), "anteriores": anteriores,
-            "turnos_claude": len(conv.turnos), "substituir": substituir}
+            "versao": nova_versao, "anteriores": anteriores, "turnos_claude": len(conv.turnos), "substituir": substituir}
 
 
 def _salvar_registro_codex(estado, p, tid):
@@ -806,7 +809,7 @@ def _importar_pendentes(estado, cont, srv, pendentes):
             cont["erro"] += 1
             print(f"erro na sessao {p['sessao']} (codex): {falhas[k]}", file=sys.stderr)
             continue
-        tid = feitos.get(k) or regs.get(k)        # fonte igual a importada: sem aviso, mas o registro diz qual
+        tid = feitos.get(k) or (None if p.get("substituir") else regs.get(k))
         if not tid or not ID_RE.match(tid):
             cont["c>x recusadas_pelo_codex"] += 1
             print(f"o Codex nao importou a sessao {p['sessao']} ({p['titulo']})", file=sys.stderr)
