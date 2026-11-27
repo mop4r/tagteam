@@ -201,6 +201,9 @@ def gravar_sessao(conv, sessao, pasta, cwd, versao, origem="antigravity"):
         for linha in linhas_sessao(conv, sessao, cwd, versao, origem):
             f.write(json.dumps(linha, ensure_ascii=False) + "\n")
     os.replace(tmp, destino)
+    datas = [t.quando.timestamp() for t in conv.turnos if getattr(t, "quando", None)]
+    if datas and 946684800 <= max(datas) <= 4102444800:
+        os.utime(destino, (max(datas), max(datas)))
     return destino
 
 

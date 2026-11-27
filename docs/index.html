@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TagTeam — Sync Claude Code, Gemini (Antigravity), Grok CLI, OpenAI Codex &amp; Cursor Conversations</title>
-  <meta name="description" content="Keep one coding conversation alive across Claude Code, Google Gemini (Antigravity app and agy CLI), Grok CLI and OpenAI Codex (app and CLI). Two-way native session sync, shared CLAUDE.md/skills/MCP, and automatic 95% usage-limit handoff.">
+  <meta name="description" content="Keep one coding conversation alive across Claude Code, Google Gemini (Antigravity app and agy CLI), Grok CLI, OpenAI Codex (app and CLI) and Cursor (CLI and app). Two-way native session sync, shared CLAUDE.md/skills/MCP, and automatic 95% usage-limit handoff.">
   <meta name="robots" content="index, follow">
   <meta name="google-site-verification" content="U5uMQXsDR6NnZyRHUvWsYW4ielVy_WCR8aLg48kAmsM">
   <!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity (canonical/hreflang metadata only, not fetched subresources) -->
@@ -43,7 +43,7 @@
         "name": "TagTeam",
         "applicationCategory": "DeveloperApplication",
         "operatingSystem": "Windows 10, Windows 11",
-        "softwareVersion": "0.4.3",
+        "softwareVersion": "0.4.4",
         "license": "https://opensource.org/licenses/MIT",
         "url": "https://mop4r.github.io/tagteam/",
         "codeRepository": "https://github.com/mop4r/tagteam",
@@ -60,10 +60,10 @@
         "mainEntity": [
           {
             "@type": "Question",
-            "name": "How does TagTeam continue a Claude Code conversation in Gemini Antigravity or Grok CLI?",
+            "name": "How does TagTeam continue a Claude Code conversation in Gemini Antigravity, Grok CLI, OpenAI Codex or Cursor?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Hooks in Claude Code, Antigravity and Grok CLI trigger TagTeam after replies to mirror sessions directly in each tool's native format (Claude JSONL, Antigravity SQLite + protobuf, Grok ACP JSONL), so claude --resume, agy, Antigravity and grok --resume all list the same conversations."
+              "text": "Hooks in Claude Code, Antigravity, Grok CLI, OpenAI Codex and Cursor trigger TagTeam after replies to mirror sessions directly in each tool's native format (Claude JSONL, Antigravity SQLite + protobuf, Grok ACP JSONL, Codex app-server and Cursor SQLite), so claude --resume, agy, Antigravity, grok --resume, codex resume, cursor-agent --resume and the Cursor app all list the same conversations."
             }
           },
           {
@@ -79,7 +79,7 @@
             "name": "Does TagTeam send conversations to an external server or proxy?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "No. TagTeam runs 100% locally with Python standard library file I/O and Antigravity's local language server. There is no telemetry, no remote server, and no API key required."
+              "text": "No. TagTeam runs 100% locally with Python standard library file I/O and the local servers of Antigravity and Codex. There is no telemetry, no remote server, and no API key required."
             }
           }
         ]

@@ -156,6 +156,17 @@ class TestArmazenamento(Base):
         self.assertNotEqual(cursor.id_para_sessao("s"), cursor.id_para_sessao("s", 1))
         self.assertRegex(cursor.id_para_sessao("s", 3), cursor.ID_RE)
 
+    def test_updated_at_usa_data_do_ultimo_turno_e_nao_agora(self):
+        t1 = datetime(2026, 8, 23, 10, 0, tzinfo=timezone.utc)
+        t2 = datetime(2026, 8, 24, 15, 30, tzinfo=timezone.utc)
+        c = Conversa(sessao="s-datas", cwd=CWD, titulo="Antiga",
+                     turnos=[Turno("usuario", "oi", t1), Turno("assistente", "ola", t2)])
+        pasta = cursor.gravar_conversa(c, CWD, MOLDE, cursor.id_para_sessao("s-datas"), "Antiga", {"fonte": "f"})
+        with open(os.path.join(pasta, "meta.json"), encoding="utf-8") as f:
+            mj = json.load(f)
+        self.assertEqual(mj["createdAtMs"], int(t1.timestamp() * 1000))
+        self.assertEqual(mj["updatedAtMs"], int(t2.timestamp() * 1000))
+
 
 def args(**kw):
     base = dict(sessao=None, cascade=None, grok=None, codex=None, cursor=None, so=None, seco=False, forcar=False)

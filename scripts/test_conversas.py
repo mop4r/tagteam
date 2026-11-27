@@ -531,6 +531,14 @@ class TestTrava(unittest.TestCase):
             self.assertTrue(sincronizar.esperar_trava(["--sessao", "x"], prazo_s=5, pausa_s=0.01))
         self.assertTrue(os.path.exists(sincronizar.TRAVA))
 
+    def test_gravar_sessao_preserva_data_do_ultimo_turno_no_mtime(self):
+        t = datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc)
+        c = claude_jsonl.Conversa(sessao="s-old", cwd=self.pasta, titulo="Antiga",
+                                  turnos=[claude_jsonl.Turno("usuario", "oi", t),
+                                          claude_jsonl.Turno("assistente", "ola", t)])
+        arq = sincronizar.para_claude.gravar_sessao(c, "s-old", self.pasta, self.pasta, "1.0.0", "codex")
+        self.assertEqual(int(os.path.getmtime(arq)), int(t.timestamp()))
+
 
 if __name__ == "__main__":
     unittest.main()

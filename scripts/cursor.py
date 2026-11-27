@@ -269,6 +269,39 @@ def _pares(turnos):
     return pares
 
 
+def _datas_conversa(conv, agora):
+    datas = [_ms(t.quando) for t in conv.turnos if t.quando]
+    if not datas:
+        return agora, agora
+    return datas[0], max(datas[-1], datas[0])
+
+
+def _gravar_pasta(pasta, blobs, meta, marca_dados, meta_json, atualizada):
+    tmp = pasta + ".novo"
+    shutil.rmtree(tmp, ignore_errors=True)
+    os.makedirs(tmp)
+    db = sqlite3.connect(os.path.join(tmp, "store.db"))
+    try:
+        db.execute("create table blobs (id text primary key, data blob)")
+        db.execute("create table meta (key text primary key, value text)")
+        db.executemany("insert into blobs values (?, ?)", list(blobs.items()))
+        db.execute("insert into meta values ('0', ?)", (json.dumps(meta, separators=(",", ":")).encode().hex(),))
+        db.execute("insert into meta values (?, ?)", (MARCA, json.dumps(marca_dados)))
+        db.commit()
+    finally:
+        db.close()
+    with open(os.path.join(tmp, "meta.json"), "w", encoding="utf-8") as f:
+        # a lista do CLI (cursor-agent --resume) le o nome daqui, nao do store.db: sem "title" aparece "New Agent"
+        json.dump(meta_json, f, ensure_ascii=False)
+    if os.path.isdir(pasta):
+        shutil.rmtree(pasta)
+    os.replace(tmp, pasta)
+    ts = atualizada / 1000
+    if 946684800 <= ts <= 4102444800:
+        for arq in ("meta.json", "store.db"):
+            os.utime(os.path.join(pasta, arq), (ts, ts))
+
+
 def gravar_conversa(conv, cwd, molde, aid, titulo, fonte):
     """Grava a conversa como do CLI do Cursor em ~/.cursor/chats/<md5(cwd)>/<aid>/. Devolve a pasta."""
     blobs = {}
@@ -304,32 +337,15 @@ def gravar_conversa(conv, cwd, molde, aid, titulo, fonte):
         if campo == 9:
             v = ("file:///app/backend/server/" + _codificar(cwd)).encode()
         raiz_campos.append([campo, tipo, v])
-    raiz_campos += [[26, 0, agora], [38, 2, str(uuid.uuid4()).encode()]]
+    criada, atualizada = _datas_conversa(conv, agora)
+    raiz_campos += [[26, 0, atualizada], [38, 2, str(uuid.uuid4()).encode()]]
     raiz = guardar(pb.gravar(raiz_campos))
-    criada = _ms(conv.turnos[0].quando) if conv.turnos and conv.turnos[0].quando else agora
     meta = {"agentId": aid, "latestRootBlobId": raiz.hex(), "name": titulo, "mode": "default",
             "isRunEverything": False, "createdAt": criada, "blobEncryptionKey": secrets.token_hex(32)}
     pasta = os.path.join(pasta_do_cwd(cwd), aid)
-    tmp = pasta + ".novo"
-    shutil.rmtree(tmp, ignore_errors=True)
-    os.makedirs(tmp)
-    db = sqlite3.connect(os.path.join(tmp, "store.db"))
-    try:
-        db.execute("create table blobs (id text primary key, data blob)")
-        db.execute("create table meta (key text primary key, value text)")
-        db.executemany("insert into blobs values (?, ?)", list(blobs.items()))
-        db.execute("insert into meta values ('0', ?)", (json.dumps(meta, separators=(",", ":")).encode().hex(),))
-        db.execute("insert into meta values (?, ?)", (MARCA, json.dumps({**fonte, "turnos": len(turnos)})))
-        db.commit()
-    finally:
-        db.close()
-    with open(os.path.join(tmp, "meta.json"), "w", encoding="utf-8") as f:
-        # a lista do CLI (cursor-agent --resume) le o nome daqui, nao do store.db: sem "title" aparece "New Agent"
-        json.dump({"schemaVersion": 1, "createdAtMs": criada, "hasConversation": True, "updatedAtMs": agora,
-                   "cwd": cwd, **({"title": titulo} if titulo else {})}, f, ensure_ascii=False)
-    if os.path.isdir(pasta):
-        shutil.rmtree(pasta)
-    os.replace(tmp, pasta)
+    meta_json = {"schemaVersion": 1, "createdAtMs": criada, "hasConversation": True, "updatedAtMs": atualizada,
+                 "cwd": cwd, **({"title": titulo} if titulo else {})}
+    _gravar_pasta(pasta, blobs, meta, {**fonte, "turnos": len(turnos)}, meta_json, atualizada)
     return pasta
 
 

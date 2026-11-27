@@ -100,6 +100,21 @@ class TestCursorApp(Base):
         self.assertEqual(linha[0], WID)
         self.assertEqual(json.loads(linha[1])["name"], "Do Claude")
 
+    def test_datas_do_app_usam_quando_dos_turnos_e_nao_agora(self):
+        banco(self.db)
+        c = self.conexao()
+        cid = cursor_app.id_para_sessao("s-datas")
+        t1 = datetime(2026, 8, 23, 10, 0, tzinfo=timezone.utc)
+        t2 = datetime(2026, 8, 24, 15, 30, tzinfo=timezone.utc)
+        conv = Conversa(sessao="s-datas", cwd=CWD, titulo="Antiga",
+                        turnos=[Turno("usuario", "oi", t1), Turno("assistente", "ola", t2)])
+        cursor_app.gravar(c, conv, cid, WID, IDENT, cursor_app.achar_molde(c), 1795700000000)
+        dados = json.loads(c.execute("select value from cursorDiskKV where key = ?", (f"composerData:{cid}",)).fetchone()[0])
+        self.assertEqual(dados["createdAt"], int(t1.timestamp() * 1000))
+        self.assertEqual(dados["lastUpdatedAt"], int(t2.timestamp() * 1000))
+        row = c.execute("select createdAt, lastUpdatedAt from composerHeaders where composerId = ?", (cid,)).fetchone()
+        self.assertEqual(row, (int(t1.timestamp() * 1000), int(t2.timestamp() * 1000)))
+
     def test_nada_da_conversa_nativa_vaza_para_a_copia(self):
         banco(self.db)
         c = self.conexao()

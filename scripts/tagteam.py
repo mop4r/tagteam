@@ -21,7 +21,7 @@ import saude  # noqa: E402
 import tela  # noqa: E402
 from tela import cor  # noqa: E402
 
-VERSAO = "0.4.3"
+VERSAO = "0.4.4"
 SKILL = os.path.dirname(AQUI)
 ATUALIZA_S = 2.0
 PRAZO_SIMULAR_S = 600

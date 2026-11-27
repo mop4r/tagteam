@@ -171,7 +171,7 @@ def montar(conv, cid, wid, ident, molde, agora_ms):
     for i, t in enumerate(turnos):
         tipo = 1 if t.papel == "usuario" else 2
         bid = str(uuid.uuid5(NS, f"{cid}:{i}"))
-        ms = int(t.criada.timestamp() * 1000) if getattr(t, "criada", None) else inicio + i
+        ms = int(t.quando.timestamp() * 1000) if getattr(t, "quando", None) else inicio + i
         texto = t.texto[:MAX_TEXTO]
         b = copy.deepcopy(molde["usuario" if tipo == 1 else "assistente"])
         b.update(bubbleId=bid, type=tipo, text=texto, createdAt=_iso(ms), conversationState="")
